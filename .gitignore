@@ -9,3 +9,21 @@ wheels/
 # Virtual environments
 .venv
 models/
+
+.claude
+CLAUDE.md
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
