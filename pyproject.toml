@@ -1,0 +1,10 @@
+[project]
+name = "live-agent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["sherpa-onnx", "sounddevice", "edge-tts", "pyside6>=6.5"]
+
+[tool.setuptools]
+packages = ["live_agent"]
