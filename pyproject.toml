@@ -3,7 +3,7 @@ name = "live-agent"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11, <3.13"
 dependencies = [
     "sherpa-onnx",
     "sounddevice",
@@ -18,6 +18,8 @@ dependencies = [
     "pycryptodome>=3.23.0",
     "requests>=2.34.2",
     "uvicorn>=0.47.0",
+    "pyinstaller>=6.11.1",
+    "pyinstaller-hooks-contrib>=2025.1",
 ]
 
 [tool.setuptools]
