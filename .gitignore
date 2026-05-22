@@ -1,29 +1,70 @@
-# Python-generated files
+# --- Python ---
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
 build/
+develop-eggs/
 dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
 wheels/
-*.egg-info
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
 
-# Virtual environments
-.venv
-models/
+# --- Virtual Environments ---
+.venv/
+venv/
+ENV/
 
-.claude
-CLAUDE.md
+# --- ASR Models & Large Files ---
+models/*
+!models/.gitkeep
+*.tar.bz2
+*.onnx
 
-# OS metadata
+# --- Project Specific Data (Local) ---
+browser_session/
+data/
+*.xlsx
+*.xls
+!关键词回复规则.xlsx
+!定时弹幕规则.xlsx
+
+# --- Packaging ---
+# .spec files are kept for custom build configuration
+
+# --- OS Metadata ---
 .DS_Store
+.DS_Store?
+._*
 Thumbs.db
+desktop.ini
 
-# IDE
+# --- IDEs & Editors ---
 .vscode/
 .idea/
+*.swp
+*.swo
+.project
+.pydevproject
+.settings/
 
-# Environment
+# --- Logs & Temp ---
+*.log
 .env
 .env.local
+.cache/
 
-# Logs
-*.log
+# --- UV (Keep uv.lock for consistent environments) ---
+# !uv.lock 

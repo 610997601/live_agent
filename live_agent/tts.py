@@ -143,9 +143,17 @@ def _play_audio(path: Path) -> None:
             stderr=subprocess.DEVNULL,
         )
     elif system == "Windows":
-        # Windows 使用内置 SoundPlayer
+        # Windows 使用 PowerShell 调用 Media.MediaPlayer (支持 MP3)
+        # 注意：SoundPlayer 仅支持 WAV，而 edge-tts 生成的是 MP3
+        ps_cmd = (
+            f"$p = New-Object System.Windows.Media.MediaPlayer; "
+            f"$p.Open([Uri]'{path.absolute().as_uri()}'); "
+            f"$p.Play(); "
+            f"while($p.NaturalDuration.HasTimeSpan -eq $false) {{ Start-Sleep -m 50 }}; "
+            f"Start-Sleep -s [math]::Ceiling($p.NaturalDuration.TimeSpan.TotalSeconds)"
+        )
         subprocess.run(
-            ["powershell", "-c", f"(New-Object Media.SoundPlayer '{path}').PlaySync()"],
+            ["powershell", "-c", f"Add-Type -AssemblyName PresentationCore; {ps_cmd}"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )

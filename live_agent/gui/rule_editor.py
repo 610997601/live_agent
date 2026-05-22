@@ -1,8 +1,8 @@
 """规则编辑对话框 —— 添加/编辑关键词触发规则。"""
 
 from PySide6.QtWidgets import (
-    QDialog, QFormLayout, QLineEdit, QTextEdit, QComboBox,
-    QDialogButtonBox, QVBoxLayout, QMessageBox,
+    QDialog, QLineEdit, QTextEdit, QComboBox,
+    QDialogButtonBox, QVBoxLayout, QMessageBox, QLabel
 )
 
 VOICES = [
@@ -20,7 +20,6 @@ RATE_OPTIONS = [
     "+10%", "+20%", "+30%", "+50%", "+100%",
 ]
 
-
 class RuleEditor(QDialog):
     """模态对话框，用于添加或编辑一条规则。"""
 
@@ -29,36 +28,56 @@ class RuleEditor(QDialog):
         self._rule = rule
         is_edit = rule is not None
         self.setWindowTitle("编辑规则" if is_edit else "添加规则")
-        self.setMinimumWidth(500)
+        self.setMinimumWidth(600)
 
         layout = QVBoxLayout(self)
-        form = QFormLayout()
-        form.setSpacing(10)
+        layout.setContentsMargins(20, 24, 20, 20)
+        layout.setSpacing(12)
 
+        layout.addWidget(QLabel("<b>触发关键词:</b>"))
         self.keyword_edit = QLineEdit()
         self.keyword_edit.setPlaceholderText("例如: 上架")
-        form.addRow("关键词:", self.keyword_edit)
+        self.keyword_edit.setMinimumHeight(40)
+        self.keyword_edit.setStyleSheet("font-size: 14px; padding: 8px;")
+        layout.addWidget(self.keyword_edit)
 
+        layout.addWidget(QLabel("<b>回复文案:</b>"))
         self.reply_edit = QTextEdit()
         self.reply_edit.setPlaceholderText("例如: 货品已经上架了，大家快抢啊")
-        self.reply_edit.setMaximumHeight(80)
-        form.addRow("回复文案:", self.reply_edit)
+        self.reply_edit.setMinimumHeight(100)
+        self.reply_edit.setStyleSheet("font-size: 14px; padding: 8px;")
+        layout.addWidget(self.reply_edit)
 
+        # 语音和语速并行
+        voice_row = QVBoxLayout()
+        voice_row.addWidget(QLabel("<b>语音音色:</b>"))
         self.voice_combo = QComboBox()
+        self.voice_combo.setMinimumHeight(40)
         for value, label in VOICES:
             self.voice_combo.addItem(label, value)
-        form.addRow("语音音色:", self.voice_combo)
+        voice_row.addWidget(self.voice_combo)
+        layout.addLayout(voice_row)
 
+        rate_row = QVBoxLayout()
+        rate_row.addWidget(QLabel("<b>语音语速:</b>"))
         self.rate_combo = QComboBox()
+        self.rate_combo.setMinimumHeight(40)
         self.rate_combo.addItems(RATE_OPTIONS)
         self.rate_combo.setCurrentText("+0%")
-        form.addRow("语速:", self.rate_combo)
+        rate_row.addWidget(self.rate_combo)
+        layout.addLayout(rate_row)
 
-        layout.addLayout(form)
-
+        layout.addSpacing(10)
         buttons = QDialogButtonBox()
-        buttons.addButton("保存", QDialogButtonBox.AcceptRole)
-        buttons.addButton("取消", QDialogButtonBox.RejectRole)
+        save_btn = buttons.addButton(" 保 存 ", QDialogButtonBox.AcceptRole)
+        save_btn.setObjectName("generateBtn")
+        save_btn.setMinimumHeight(40)
+        save_btn.setMinimumWidth(100)
+        
+        cancel_btn = buttons.addButton(" 取 消 ", QDialogButtonBox.RejectRole)
+        cancel_btn.setMinimumHeight(40)
+        cancel_btn.setMinimumWidth(100)
+        
         buttons.accepted.connect(self._validate_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
