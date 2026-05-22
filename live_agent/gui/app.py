@@ -36,11 +36,13 @@ QPushButton {
 }
 
 QPushButton:hover {
-    background-color: #e8e8ed;
+    background-color: #f2f2f7;
+    border-color: #0071e3;
+    color: #0071e3;
 }
 
 QPushButton:pressed {
-    background-color: #d2d2d7;
+    background-color: #e5e5ea;
 }
 
 QPushButton:disabled {
@@ -62,6 +64,10 @@ QPushButton#startBtn:hover {
     background-color: #30b350;
 }
 
+QPushButton#startBtn:pressed {
+    background-color: #248a3d;
+}
+
 QPushButton#startBtn:disabled {
     background-color: #a5e8b8;
 }
@@ -79,6 +85,10 @@ QPushButton#stopBtn:hover {
     background-color: #e0352b;
 }
 
+QPushButton#stopBtn:pressed {
+    background-color: #c42b23;
+}
+
 QPushButton#stopBtn:disabled {
     background-color: #ff8a84;
 }
@@ -92,7 +102,12 @@ QPushButton#toolBtn {
 }
 
 QPushButton#toolBtn:hover {
-    background-color: #e8e8ed;
+    background-color: #f2f2f7;
+    border-color: #0071e3;
+}
+
+QPushButton#toolBtn:pressed {
+    background-color: #e5e5ea;
 }
 
 QPushButton#generateBtn {
@@ -106,18 +121,26 @@ QPushButton#generateBtn {
 
 QPushButton#generateBtn:hover {
     background-color: #0077ed;
+    border-color: #0077ed;
+}
+
+QPushButton#generateBtn:pressed {
+    background-color: #005bb2;
+    border-color: #005bb2;
 }
 
 QTableWidget {
     background-color: #ffffff;
     border: 1px solid #d2d2d7;
     border-radius: 6px;
-    gridline-color: transparent;
+    gridline-color: #f2f2f7;
     font-size: 13px;
+    outline: none;
 }
 
 QTableWidget::item {
-    padding: 6px 10px;
+    padding: 8px 10px;
+    color: #1d1d1f;
 }
 
 QTableWidget::item:selected {
@@ -126,7 +149,15 @@ QTableWidget::item:selected {
 }
 
 QTableWidget::item:alternate {
-    background-color: #f9f9fb;
+    background-color: #fafafa;
+}
+
+QTableWidget::item:hover {
+    background-color: #f2f2f7;
+}
+
+QTableWidget::item:selected:hover {
+    background-color: #0071e3;
 }
 
 QHeaderView::section {
@@ -205,7 +236,7 @@ QDialog {
 
 def main():
     app = QApplication(sys.argv)
-    app.setApplicationName("直播语音助手")
+    app.setApplicationName("直播助手")
     app.setOrganizationName("live_agent")
     app.setStyleSheet(STYLESHEET)
 

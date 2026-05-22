@@ -1,183 +1,306 @@
-"""主窗口 —— 布局组装与信号/槽编排。"""
+"""主窗口 —— 布局组装与多模块协调。"""
 
-from PySide6.QtCore import Qt
+import threading
+import requests
+from datetime import datetime, timedelta, timezone
+from PySide6.QtCore import Qt, QTimer, Signal, Slot
+from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QStatusBar, QLabel, QMessageBox,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStatusBar,
+    QLabel, QPushButton, QListWidget, QStackedWidget, QMessageBox, QFrame, QApplication
 )
 
-from live_agent.keyword import KeywordMatcher
-from live_agent.gui.rule_store import RuleStore
-from live_agent.gui.audio_manager import AudioManager
-from live_agent.gui.workers import AsrWorker
-from live_agent.gui.session_panel import SessionPanel
-from live_agent.gui.rule_table import RuleTable
-from live_agent.gui.rule_editor import RuleEditor
-
-VOICE_SHORT = {
-    "zh-CN-XiaoxiaoNeural": "晓晓",
-    "zh-CN-YunxiNeural": "云希",
-    "zh-CN-YunyangNeural": "云扬",
-    "zh-CN-XiaohanNeural": "晓涵",
-    "zh-CN-XiaoyanNeural": "晓颜",
-    "zh-CN-XiaoshuangNeural": "晓双",
-    "zh-CN-XiaochenNeural": "晓辰",
-}
-
+from live_agent.buyin import BuYin
+from live_agent.gui.panels.voice_panel import VoicePanel
+from live_agent.gui.panels.reply_panel import ReplyPanel
+from live_agent.gui.panels.danmaku_panel import DanmakuPanel
 
 class MainWindow(QMainWindow):
-    """直播语音助手主窗口。"""
+    """集成了语音识别、回复配置及定时弹幕的统一主窗口。"""
+    avatar_loaded = Signal(QPixmap)
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("直播语音助手")
-        self.setMinimumSize(700, 550)
-        self.resize(800, 600)
+        self.setWindowTitle("直播助手 - 统一客户端")
+        self.setMinimumSize(1000, 750)
+        self.resize(1100, 800)
 
-        self._rule_store = RuleStore()
-        self._audio_manager = AudioManager(self._rule_store.storage_dir)
-        self._matcher: KeywordMatcher | None = None
-        self._asr_worker: AsrWorker | None = None
+        # 业务逻辑实例
+        self.buyin = BuYin()
+        self.ewid = None
+        self.is_live = False
+        self.is_browser_open = False
 
+        # 核心监控计时器 (用于授权后的状态轮询)
+        self.monitor_timer = QTimer(self)
+        self.monitor_timer.timeout.connect(self._on_monitor_tick)
+
+        self._init_ui()
+        self._connect_signals()
+        self._update_ui_state()
+
+    def _init_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
-
         main_layout = QVBoxLayout(central)
-        main_layout.setContentsMargins(16, 16, 16, 16)
-        main_layout.setSpacing(12)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
-        self._session_panel = SessionPanel()
-        main_layout.addWidget(self._session_panel)
+        # --- 1. 顶部状态栏 / Header ---
+        header = QFrame()
+        header.setFixedHeight(65)
+        header.setStyleSheet("background-color: white; border-bottom: 1px solid #d2d2d7;")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(20, 0, 20, 0)
+        header_layout.setSpacing(15)
 
-        self._rule_table = RuleTable()
-        main_layout.addWidget(self._rule_table, stretch=1)
+        self.avatar_label = QLabel()
+        self.avatar_label.setFixedSize(44, 44)
+        self.avatar_label.setStyleSheet("border-radius: 22px; background-color: #f5f5f7; border: 1px solid #d2d2d7;")
+        self.avatar_label.setScaledContents(True)
 
-        self._status_bar = QStatusBar()
-        self.setStatusBar(self._status_bar)
+        self.account_label = QLabel("未授权")
+        self.account_label.setStyleSheet("font-weight: 600; font-size: 15px; color: #1d1d1f;")
 
-        self._connect_signals()
-        self._on_rules_changed()
+        self.live_status_label = QLabel("直播状态: 需先登录")
+        self.live_status_label.setStyleSheet("color: #86868b; font-size: 13px; margin-left: 10px;")
 
-        rules = self._rule_store.get_all()
-        missing = [r for r in rules if not self._audio_manager.has_audio(r.id)]
-        if missing:
-            self._audio_manager.generate_all(missing)
+        header_layout.addWidget(self.avatar_label)
+        header_layout.addWidget(self.account_label)
+        header_layout.addWidget(self.live_status_label)
+        header_layout.addStretch()
 
-    def _connect_signals(self) -> None:
-        self._session_panel.start_btn.clicked.connect(self._on_start)
-        self._session_panel.stop_btn.clicked.connect(self._on_stop)
-        self._rule_table.add_clicked.connect(self._on_add_rule)
-        self._rule_table.edit_clicked.connect(self._on_edit_rule)
-        self._rule_table.delete_clicked.connect(self._on_delete_rule)
-        self._rule_table.generate_clicked.connect(self._on_generate_all)
-        self._rule_store.rules_changed.connect(self._on_rules_changed)
-        self._audio_manager.generation_progress.connect(self._on_gen_progress)
-        self._audio_manager.generation_complete.connect(self._on_gen_complete)
-        self._audio_manager.rule_audio_ready.connect(self._on_audio_ready)
+        self.login_btn = QPushButton("🚀 授权登录")
+        self.login_btn.setMinimumHeight(34)
+        self.login_btn.clicked.connect(self._on_login_click)
 
-    # -- Session ----------------------------------------------------------
+        self.refresh_btn = QPushButton("🔄 同步")
+        self.refresh_btn.setMinimumHeight(34)
+        self.refresh_btn.clicked.connect(self.buyin.refresh_data)
 
-    def _on_start(self) -> None:
-        if self._asr_worker is not None and self._asr_worker.isRunning():
-            return
-        self._matcher = KeywordMatcher(self._rule_store.get_keyword_replies())
-        self._session_panel.clear()
-        self._session_panel.set_listening(True)
-        self._asr_worker = AsrWorker(model_dir="models")
-        self._asr_worker.text_recognized.connect(self._on_text_recognized)
-        self._asr_worker.error_occurred.connect(self._on_asr_error)
-        self._asr_worker.start()
+        header_layout.addWidget(self.login_btn)
+        header_layout.addWidget(self.refresh_btn)
+        main_layout.addWidget(header)
 
-    def _on_stop(self) -> None:
-        if self._asr_worker is not None:
-            self._asr_worker.stop()
-            self._asr_worker = None
-        self._matcher = None
-        self._session_panel.set_listening(False)
-
-    # -- Text recognition -------------------------------------------------
-
-    def _on_text_recognized(self, text: str) -> None:
-        self._session_panel.text_display.setPlainText(text)
-        if self._matcher is None:
-            return
-        hit = self._matcher.check(text)
-        if hit is not None:
-            rule = self._rule_store.get_by_keyword(hit.keyword)
-            if rule is None:
-                return
-            voice_name = VOICE_SHORT.get(rule.voice, rule.voice)
-            self._session_panel.show_hit(hit.keyword, rule.reply, voice_name)
-            self._audio_manager.play(rule.id)
-
-    def _on_asr_error(self, error: str) -> None:
-        self._session_panel.set_listening(False)
-        QMessageBox.critical(self, "ASR 错误", f"语音识别出错:\n{error}")
-
-    # -- Rule CRUD --------------------------------------------------------
-
-    def _on_add_rule(self) -> None:
-        editor = RuleEditor(self)
-        if editor.exec() == RuleEditor.Accepted:
-            rule = editor.get_rule()
-            self._rule_store.add(rule)
-            self._audio_manager.generate_one(rule)
-
-    def _on_edit_rule(self, rule_id: str) -> None:
-        rule = self._rule_store.get_by_id(rule_id)
-        if rule is None:
-            return
-        editor = RuleEditor(self, rule=rule)
-        if editor.exec() == RuleEditor.Accepted:
-            updated = editor.get_rule()
-            self._rule_store.update(updated)
-            self._audio_manager.generate_one(updated)
-
-    def _on_delete_rule(self, rule_id: str) -> None:
-        rule = self._rule_store.get_by_id(rule_id)
-        if rule is None:
-            return
-        reply = QMessageBox.question(
-            self, "确认删除",
-            f"确定要删除规则「{rule.keyword}」吗？",
-            QMessageBox.Yes | QMessageBox.No,
+        # --- 补充 'by' 项目缺失的全局提示 ---
+        self.warning_label = QLabel(
+            "⚠️ 运行中：请务必保持浏览器和程序打开的百应页面开启！"
         )
-        if reply == QMessageBox.Yes:
-            self._rule_store.delete(rule_id)
+        self.warning_label.setStyleSheet(
+            "color: #d35400; background-color: #fff3cd; padding: 10px 20px; font-weight: bold; border-bottom: 1px solid #ffeeba;"
+        )
+        self.warning_label.setVisible(False)
+        main_layout.addWidget(self.warning_label)
 
-    def _on_generate_all(self) -> None:
-        rules = self._rule_store.get_all()
-        if rules:
-            self._audio_manager.generate_all(rules)
+        # --- 2. 主体部分 (侧栏 + 内容) ---
+        body = QWidget()
+        body_layout = QHBoxLayout(body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(0)
 
-    # -- Rule changes -----------------------------------------------------
+        # 左侧导航
+        self.sidebar = QListWidget()
+        self.sidebar.setFixedWidth(200)
+        self.sidebar.setStyleSheet("""
+            QListWidget {
+                background-color: #f5f5f7;
+                border: none;
+                border-right: 1px solid #d2d2d7;
+                color: #1d1d1f;
+                font-size: 14px;
+                outline: none;
+            }
+            QListWidget::item {
+                padding: 18px 20px;
+                border: none;
+                border-radius: 0px;
+            }
+            QListWidget::item:selected {
+                background-color: #e8e8ed;
+                color: #0071e3;
+                font-weight: bold;
+            }
+            QListWidget::item:hover:!selected:enabled {
+                background-color: #f0f0f2;
+            }
+            QListWidget::item:disabled {
+                color: #aeaeb2;
+            }
+        """)
+        self.sidebar.addItems(["🎤 语音识别", "🤖 回复配置", "💬 定时弹幕"])
+        self.sidebar.currentRowChanged.connect(self._on_nav_changed)
 
-    def _on_rules_changed(self) -> None:
-        rules = self._rule_store.get_all()
-        self._rule_table.refresh(rules, self._audio_manager)
-        if self._matcher is not None:
-            self._matcher.update_rules(self._rule_store.get_keyword_replies())
-        ready = sum(1 for r in rules if self._audio_manager.has_audio(r.id))
-        self._status_bar.showMessage(f"音频: {ready}/{len(rules)} 就绪", 0)
+        # 右侧内容堆栈
+        self.content_stack = QStackedWidget()
+        
+        self.voice_panel = VoicePanel()
+        self.reply_panel = ReplyPanel(self.buyin)
+        self.danmaku_panel = DanmakuPanel(self.buyin)
 
-    # -- Audio generation -------------------------------------------------
+        self.content_stack.addWidget(self.voice_panel)
+        self.content_stack.addWidget(self.reply_panel)
+        self.content_stack.addWidget(self.danmaku_panel)
 
-    def _on_gen_progress(self, current: int, total: int) -> None:
-        self._status_bar.showMessage(f"生成音频中... {current}/{total}", 0)
+        body_layout.addWidget(self.sidebar)
+        body_layout.addWidget(self.content_stack)
+        main_layout.addWidget(body)
 
-    def _on_gen_complete(self) -> None:
-        rules = self._rule_store.get_all()
-        ready = sum(1 for r in rules if self._audio_manager.has_audio(r.id))
-        self._status_bar.showMessage(f"音频: {ready}/{len(rules)} 就绪", 0)
-        self._rule_table.refresh(rules, self._audio_manager)
+        # --- 3. 底部状态栏 ---
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage("准备就绪")
 
-    def _on_audio_ready(self, rule_id: str) -> None:
-        rules = self._rule_store.get_all()
-        self._rule_table.refresh(rules, self._audio_manager)
+        self.sidebar.setCurrentRow(0)
 
-    # -- Shutdown ---------------------------------------------------------
+    def _connect_signals(self):
+        # BuYin 信号
+        self.buyin.browser_started.connect(self._on_browser_started)
+        self.buyin.browser_closed.connect(self._on_browser_closed)
+        self.buyin.data_ready.connect(self._on_data_ready)
+        self.buyin.api_finished.connect(self._on_api_finished)
+        self.buyin.error_occurred.connect(self._on_error)
+        
+        # 本地头像加载
+        self.avatar_loaded.connect(lambda p: self.avatar_label.setPixmap(p))
 
-    def closeEvent(self, event) -> None:
-        if self._asr_worker is not None:
-            self._asr_worker.stop()
-            self._asr_worker = None
+        # 面板状态消息
+        self.voice_panel.status_message.connect(self.status_bar.showMessage)
+
+    def _update_ui_state(self):
+        is_open = self.is_browser_open
+        self.login_btn.setText("🚪 退出登录" if is_open else "🚀 授权登录")
+        self.warning_label.setVisible(is_open)
+        
+        logged_in = self.ewid is not None
+        
+        if not logged_in:
+            self.account_label.setText("未登录")
+            self.avatar_label.clear()
+            self.live_status_label.setText("直播状态: 需先登录")
+            # 如果当前在受限页，退回到语音识别页
+            if self.sidebar.currentRow() > 0:
+                self.sidebar.setCurrentRow(0)
+        
+        # 只有登录后才启用回复和弹幕配置，并显式置灰
+        for i in [1, 2]:
+            item = self.sidebar.item(i)
+            if logged_in:
+                item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+            else:
+                item.setFlags(Qt.NoItemFlags) # 这会使 item 变为 disabled 状态
+
+    def _on_nav_changed(self, index):
+        self.content_stack.setCurrentIndex(index)
+
+    def _on_login_click(self):
+        if not self.is_browser_open:
+            self.buyin.start_browser()
+        else:
+            reply = QMessageBox.question(self, "确认退出", "确定退出并关闭浏览器？", QMessageBox.Yes | QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                self._logout()
+
+    def _logout(self):
+        self.monitor_timer.stop()
+        if self.is_browser_open:
+            self.buyin.close_browser()
+        self.is_browser_open = False
+        self.ewid = None
+        self.is_live = False
+        self._update_ui_state()
+
+    def _on_monitor_tick(self):
+        if not self.is_browser_open: return
+        if not self.ewid:
+            self.buyin.refresh_data()
+        else:
+            self.buyin.get_account_info(self.ewid)
+
+    @Slot()
+    def _on_browser_started(self):
+        self.is_browser_open = True
+        self._update_ui_state()
+        self.monitor_timer.start(2000)
+
+    @Slot()
+    def _on_browser_closed(self):
+        if self.is_browser_open:
+            self.is_browser_open = False
+            self._logout()
+            # 延迟 100ms 弹出提示并退出，确保状态更新完成
+            QTimer.singleShot(100, lambda: (
+                QMessageBox.critical(self, "连接断开", "百应浏览器已关闭，为保证同步安全，程序将退出。"),
+                QApplication.quit()
+            ))
+
+    @Slot(dict)
+    def _on_data_ready(self, res):
+        if res.get("ewid"):
+            info = res["ewid"]
+            self.ewid = info.get("fingerprint_id") or info.get("seraph_did")
+            self.buyin.get_account_info(self.ewid)
+        elif self.ewid:
+            self.ewid = None
+            self._update_ui_state()
+
+    @Slot(str, dict)
+    def _on_api_finished(self, tag, res):
+        if tag == "ACCOUNT_INFO":
+            data = res.get("data")
+            if data and data.get("nickname"):
+                if self.monitor_timer.interval() == 2000:
+                    self.monitor_timer.setInterval(10000)
+                
+                self.account_label.setText(data['nickname'])
+                if data.get("avatar"):
+                    self._async_load_avatar(data["avatar"])
+                
+                self.buyin.get_live_status(self.ewid)
+                self.reply_panel.set_ewid(self.ewid)
+                self._update_ui_state()
+            else:
+                self.ewid = None
+                self._update_ui_state()
+
+        elif tag == "LIVE_STATUS":
+            d = res.get("data", {})
+            self.is_live = bool(d.get("room_id") and d.get("room_create_time"))
+            if self.is_live:
+                dt = datetime.fromtimestamp(
+                    d["room_create_time"], timezone(timedelta(hours=8))
+                )
+                self.live_status_label.setText(f"🟢 直播中 | 开播时间: {dt.strftime('%m-%d %H:%M:%S')}")
+                self.live_status_label.setStyleSheet("color: green; font-weight: bold; margin-left: 10px;")
+            else:
+                self.live_status_label.setText("⚪️ 未开播")
+                self.live_status_label.setStyleSheet("color: #86868b; margin-left: 10px;")
+            
+            # 同步信息给弹幕面板
+            outer_id = res.get("data", {}).get("outer_id", "default")
+            self.danmaku_panel.set_session_info(self.ewid, outer_id, self.is_live)
+
+        elif tag == "GET_STATUS":
+            self.reply_panel.update_intel_status(res.get("data", {}).get("switch", False))
+        elif tag == "GET_RULES":
+            self.reply_panel.update_rules(res.get("data", {}).get("auto_reply_list", []))
+        elif tag == "SET_RULES":
+            self.status_bar.showMessage("同步成功", 3000)
+            self.buyin.get_auto_reply_rules(self.ewid)
+
+    def _async_load_avatar(self, url):
+        def _t():
+            try:
+                r = requests.get(url, timeout=5)
+                img = QImage.fromData(r.content)
+                if not img.isNull():
+                    self.avatar_loaded.emit(QPixmap.fromImage(img))
+            except: pass
+        threading.Thread(target=_t, daemon=True).start()
+
+    def _on_error(self, err):
+        self.status_bar.showMessage(f"错误: {err}")
+
+    def closeEvent(self, event):
+        self.voice_panel.stop_all()
+        self._logout()
         event.accept()

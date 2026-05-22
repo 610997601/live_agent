@@ -8,6 +8,8 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal
 
 
+from live_agent.utils import get_app_data_dir
+
 @dataclass
 class Rule:
     """单条关键词触发规则。"""
@@ -55,7 +57,7 @@ class RuleStore(QObject):
     def __init__(self, storage_dir: Path | None = None):
         super().__init__()
         if storage_dir is None:
-            storage_dir = Path.home() / ".live_agent"
+            storage_dir = Path(get_app_data_dir())
         self._dir = Path(storage_dir)
         self._dir.mkdir(parents=True, exist_ok=True)
         self._path = self._dir / "rules.json"

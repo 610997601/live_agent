@@ -20,7 +20,7 @@ class SessionPanel(QGroupBox):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(12)
 
-        self.start_btn = QPushButton("▶  开始直播")
+        self.start_btn = QPushButton("▶  开始识别")
         self.start_btn.setObjectName("startBtn")
         self.start_btn.setMinimumHeight(40)
 
@@ -45,7 +45,7 @@ class SessionPanel(QGroupBox):
         self.text_display.setReadOnly(True)
         self.text_display.setMaximumHeight(70)
         self.text_display.setPlaceholderText(
-            "点击「开始直播」后，此处将实时显示 ASR 识别结果..."
+            "点击「开始识别」后，此处将实时显示 ASR 识别结果..."
         )
         layout.addWidget(self.text_display)
 
@@ -73,6 +73,18 @@ class SessionPanel(QGroupBox):
         self.hit_label.setText(
             f"最近命中: 「{keyword}」 → [{voice_name}] {reply}"
         )
+
+    def update_current_text(self, history: str, active: str) -> None:
+        """更新显示内容，由历史记录和当前正在识别的文字组成。"""
+        full_text = history + active
+        
+        # 滑动窗口：如果总长度超过 5000，截断历史记录
+        if len(full_text) > 5000:
+            history = "..." + history[-4000:]
+            full_text = history + active
+            
+        self.text_display.setPlainText(full_text)
+        self.text_display.moveCursor(Qt.TextCursor.End)
 
     def clear(self) -> None:
         self.text_display.clear()

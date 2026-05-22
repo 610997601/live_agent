@@ -6,6 +6,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal, QProcess
 
 from live_agent.tts import EdgeTTS
+from live_agent.utils import get_app_data_dir
 
 
 class AudioManager(QObject):
@@ -21,7 +22,7 @@ class AudioManager(QObject):
     def __init__(self, storage_dir: Path | None = None):
         super().__init__()
         if storage_dir is None:
-            storage_dir = Path.home() / ".live_agent"
+            storage_dir = Path(get_app_data_dir())
         self._dir = Path(storage_dir) / "audio"
         self._dir.mkdir(parents=True, exist_ok=True)
         self._tts = EdgeTTS()
@@ -78,9 +79,17 @@ class AudioManager(QObject):
         elif system == "Linux":
             self._current_play.start("paplay", [str(path)])
         elif system == "Windows":
+            # 使用支持 MP3 的 MediaPlayer 替代仅支持 WAV 的 SoundPlayer
+            ps_cmd = (
+                f"$p = New-Object System.Windows.Media.MediaPlayer; "
+                f"$p.Open([Uri]'{path.absolute().as_uri()}'); "
+                f"$p.Play(); "
+                f"while($p.NaturalDuration.HasTimeSpan -eq $false) {{ Start-Sleep -m 50 }}; "
+                f"Start-Sleep -s [math]::Ceiling($p.NaturalDuration.TimeSpan.TotalSeconds)"
+            )
             self._current_play.start("powershell", [
                 "-c",
-                f"(New-Object Media.SoundPlayer '{path}').PlaySync()"
+                f"Add-Type -AssemblyName PresentationCore; {ps_cmd}"
             ])
 
     def _on_rule_done(self, rule_id: str) -> None:

@@ -136,12 +136,24 @@ def _download_model(model_dir: Path) -> None:
 
     # 解压模型文件到 models/ 目录
     print("正在解压模型...")
-    with tarfile.open(tar_path, "r:bz2") as tar:
-        tar.extractall(path=model_dir, filter="data")
-
-    # 删除压缩包，释放磁盘空间
-    tar_path.unlink()
-    print("模型准备就绪。\n")
+    try:
+        with tarfile.open(tar_path, "r:bz2") as tar:
+            tar.extractall(path=model_dir, filter="data")
+        print("模型准备就绪。\n")
+    except Exception as e:
+        print(f"\n解压模型失败: {e}")
+        print("压缩包可能损坏，正在清理并建议重新运行程序。")
+        # 清理损坏的文件和文件夹
+        if tar_path.exists(): tar_path.unlink()
+        import shutil
+        model_subdir = model_dir / MODEL_NAME
+        if model_subdir.exists(): shutil.rmtree(model_subdir)
+        sys.exit(1)
+    finally:
+        # 无论成功还是在解压阶段抛出非解压相关的异常，
+        # 只要代码执行到这，且 tar_path 还在，就删除它
+        if tar_path.exists():
+            tar_path.unlink()
 
 
 class LiveASR:
@@ -164,7 +176,7 @@ class LiveASR:
         provider: str = "cpu",
         num_threads: int = 1,
         decoding_method: str = "greedy_search",
-        enable_endpoint_detection: bool = False,
+        enable_endpoint_detection: bool = True,
     ):
         """初始化语音识别器。
 
@@ -211,10 +223,11 @@ class LiveASR:
 
         在后台守护线程中打开麦克风，持续采集音频数据并送入识别器。
         每当识别结果有更新时，调用 callback(text) 输出最新文字。
+        支持端点检测（停顿换行）。
 
         参数:
             callback: 回调函数，签名为 callback(text: str)。
-                      每次识别文字更新时被调用，text 为当前累积的完整识别结果。
+                      每次识别文字更新时被调用。如果 text 以 \n 结尾，表示句子结束。
         """
         self._running = True
 
@@ -246,12 +259,21 @@ class LiveASR:
                         self._recognizer.decode_stream(self._stream)
 
                     # 获取当前已经识别出的文字
-                    result = self._recognizer.get_result(self._stream)
+                    result = self._recognizer.get_result(self._stream).strip()
 
                     # 只有在新结果与上一次不同时才回调（避免重复输出）
                     if result and result != last_result:
                         last_result = result
                         callback(result)
+                    
+                    # 检测到端点（一句话结束/长停顿）
+                    if self._recognizer.is_endpoint(self._stream):
+                        if result:
+                            # 发送一个带换行的最终结果，通知 UI 换行
+                            callback(result + "\n")
+                        # 重置流以清除缓冲区，开始下一句识别
+                        self._recognizer.reset(self._stream)
+                        last_result = ""
 
         # 创建守护线程：主线程退出时自动结束，避免阻塞程序退出
         self._thread = threading.Thread(target=_run, daemon=True)
