@@ -191,6 +191,14 @@ QComboBox {
     font-size: 13px;
 }
 
+QComboBox QAbstractItemView {
+    background-color: #ffffff;
+    selection-background-color: #e5f1ff;
+    selection-color: #1d1d1f;
+    outline: none;
+    border: 1px solid #d2d2d7;
+}
+
 QComboBox:focus {
     border-color: #0071e3;
 }
@@ -235,6 +243,13 @@ QDialog {
 
 
 def main():
+    # Windows 任务栏图标修复：让 Windows 识别这是一个独立的 App，而不是 Python 脚本
+    import platform
+    if platform.system() == "Windows":
+        import ctypes
+        myappid = 'hsuanyuen.buyinassistant.1.0' # 唯一 ID
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+
     app = QApplication(sys.argv)
     app.setApplicationName("直播助手")
     app.setOrganizationName("live_agent")

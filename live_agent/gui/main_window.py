@@ -5,7 +5,7 @@ import requests
 import logging
 from datetime import datetime, timedelta, timezone
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QImage, QPixmap, QIcon
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStatusBar,
     QLabel, QPushButton, QListWidget, QStackedWidget, QMessageBox, QFrame, QApplication
@@ -15,6 +15,7 @@ from live_agent.buyin import BuYin
 from live_agent.gui.panels.voice_panel import VoicePanel
 from live_agent.gui.panels.reply_panel import ReplyPanel
 from live_agent.gui.panels.danmaku_panel import DanmakuPanel
+from live_agent.gui.settings_dialog import SettingsDialog
 
 logger = logging.getLogger("MainWindow")
 
@@ -25,6 +26,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("直播助手 - 统一客户端")
+        self.setWindowIcon(QIcon("icon.png"))
         self.setMinimumSize(1000, 750)
         self.resize(1100, 800)
 
@@ -33,6 +35,12 @@ class MainWindow(QMainWindow):
         self.ewid = None
         self.is_live = False
         self.is_browser_open = False
+
+        # 异步拉取最新音色列表
+        from live_agent.gui.workers import VoiceFetchWorker
+        self._voice_worker = VoiceFetchWorker()
+        self._voice_worker.finished.connect(self._on_voices_fetched)
+        self._voice_worker.start()
 
         # 核心监控计时器 (用于授权后的状态轮询)
         self.monitor_timer = QTimer(self)
@@ -101,14 +109,19 @@ class MainWindow(QMainWindow):
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(0)
 
-        # 左侧导航
+        # 左侧导航区域
+        sidebar_container = QWidget()
+        sidebar_container.setFixedWidth(200)
+        sidebar_container.setStyleSheet("background-color: #f5f5f7; border-right: 1px solid #d2d2d7;")
+        sidebar_v_layout = QVBoxLayout(sidebar_container)
+        sidebar_v_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_v_layout.setSpacing(0)
+
         self.sidebar = QListWidget()
-        self.sidebar.setFixedWidth(200)
         self.sidebar.setStyleSheet("""
             QListWidget {
-                background-color: #f5f5f7;
+                background-color: transparent;
                 border: none;
-                border-right: 1px solid #d2d2d7;
                 color: #1d1d1f;
                 font-size: 14px;
                 outline: none;
@@ -132,6 +145,26 @@ class MainWindow(QMainWindow):
         """)
         self.sidebar.addItems(["🎤 语音识别", "🤖 回复配置", "💬 定时弹幕"])
         self.sidebar.currentRowChanged.connect(self._on_nav_changed)
+        sidebar_v_layout.addWidget(self.sidebar)
+
+        self.settings_btn = QPushButton("⚙️ 设置")
+        self.settings_btn.setMinimumHeight(50)
+        self.settings_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                border-top: 1px solid #d2d2d7;
+                background-color: transparent;
+                color: #1d1d1f;
+                font-size: 14px;
+                text-align: left;
+                padding-left: 20px;
+            }
+            QPushButton:hover {
+                background-color: #f0f0f2;
+            }
+        """)
+        self.settings_btn.clicked.connect(self._on_settings_click)
+        sidebar_v_layout.addWidget(self.settings_btn)
 
         # 右侧内容堆栈
         self.content_stack = QStackedWidget()
@@ -144,7 +177,7 @@ class MainWindow(QMainWindow):
         self.content_stack.addWidget(self.reply_panel)
         self.content_stack.addWidget(self.danmaku_panel)
 
-        body_layout.addWidget(self.sidebar)
+        body_layout.addWidget(sidebar_container)
         body_layout.addWidget(self.content_stack)
         main_layout.addWidget(body)
 
@@ -195,6 +228,27 @@ class MainWindow(QMainWindow):
     def _on_nav_changed(self, index):
         self.content_stack.setCurrentIndex(index)
 
+    def _on_voices_fetched(self, voices):
+        if voices:
+            from live_agent.utils import GlobalConfig
+            GlobalConfig.set_voices(voices)
+            print(f"[DEBUG] 成功拉取到 {len(voices)} 个在线音色")
+            # 如果语音面板已初始化，触发刷新
+            if hasattr(self, "voice_panel"):
+                self.voice_panel._on_rules_changed()
+
+    def _on_settings_click(self):
+        # 检查 ASR 是否正在运行
+        is_active = hasattr(self.voice_panel, "_asr_worker") and self.voice_panel._asr_worker and self.voice_panel._asr_worker.isRunning()
+        
+        dialog = SettingsDialog(self, is_asr_active=is_active)
+        if dialog.exec() == SettingsDialog.Accepted:
+            # 如果 ASR 正在运行，提示重启
+            if is_active:
+                QMessageBox.information(self, "设置已保存", "音频设置已更新，将在下次启动识别时生效。")
+            else:
+                self.status_bar.showMessage("系统设置已保存", 3000)
+
     def _on_login_click(self):
         # 防抖：禁止 3s 内重复点击
         self.login_btn.setEnabled(False)
@@ -203,8 +257,15 @@ class MainWindow(QMainWindow):
         if not self.is_browser_open:
             self.buyin.start_browser()
         else:
-            reply = QMessageBox.question(self, "确认退出", "确定退出并关闭浏览器？", QMessageBox.Yes | QMessageBox.No)
-            if reply == QMessageBox.Yes:
+            msg = QMessageBox(self)
+            msg.setWindowTitle("确认退出")
+            msg.setText("确定退出并关闭浏览器？")
+            msg.setIcon(QMessageBox.Question)
+            yes_btn = msg.addButton("是", QMessageBox.YesRole)
+            no_btn = msg.addButton("否", QMessageBox.NoRole)
+            msg.setDefaultButton(no_btn)
+            msg.exec()
+            if msg.clickedButton() == yes_btn:
                 self._logout()
 
     def _logout(self):

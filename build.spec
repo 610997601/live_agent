@@ -5,7 +5,8 @@ from PyInstaller.utils.hooks import collect_all
 datas = [
     ('live_agent', 'live_agent'), 
     ('models', 'models'),
-    ('ms-playwright', 'ms-playwright')
+    ('ms-playwright', 'ms-playwright'),
+    ('icon.png', '.')
 ]
 binaries = []
 hiddenimports = [
@@ -51,6 +52,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='icon.ico',
 )
 coll = COLLECT(
     exe,

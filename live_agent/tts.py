@@ -30,7 +30,26 @@ class EdgeTTS:
         tts.speak("最后十单，手慢无！", voice="zh-CN-YunxiNeural", rate="+30%")
     """
 
-    DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"  # 晓晓，活泼女声
+    DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"
+
+    @staticmethod
+    async def get_voices():
+        """从 Edge TTS 获取当前所有可用的中文音色。"""
+        try:
+            voices = await edge_tts.list_voices()
+            # 过滤中文音色 (zh-CN)
+            zh_voices = [v for v in voices if v["Locale"].startswith("zh-CN")]
+            if not zh_voices:
+                raise Exception("未找到中文音色")
+            return zh_voices
+        except Exception as e:
+            print(f"[DEBUG] 获取在线音色失败: {e}, 使用本地备份列表")
+            # 极简保底备份，确保断网也能运行
+            return [
+                {"ShortName": "zh-CN-XiaoxiaoNeural", "FriendlyName": "晓晓 (备份)"},
+                {"ShortName": "zh-CN-YunxiNeural", "FriendlyName": "云希 (备份)"},
+                {"ShortName": "zh-CN-YunyangNeural", "FriendlyName": "云扬 (备份)"},
+            ]
 
     def __init__(
         self,
@@ -83,14 +102,49 @@ class EdgeTTS:
     def synthesize_to_file(
         self, text: str, voice: str, rate: str, output_path: Path
     ) -> None:
-        """合成语音到文件，不播放。用于预生成规则对应的音频文件。"""
-        communicate = edge_tts.Communicate(
-            text=text,
-            voice=voice,
-            rate=rate,
-            volume=self._volume,
-        )
-        communicate.save_sync(str(output_path))
+        """合成语音到文件。在 macOS 下会自动转换为 WAV 以支持硬件索引播放。"""
+        import platform
+        import subprocess
+        system = platform.system()
+
+        if system == "Darwin" and output_path.suffix == ".wav":
+            # macOS 特处理：先生成临时 MP3 再转 WAV
+            tmp_mp3 = output_path.with_suffix(".mp3.tmp")
+            communicate = edge_tts.Communicate(
+                text=text,
+                voice=voice,
+                rate=rate,
+                volume=self._volume,
+            )
+            communicate.save_sync(str(tmp_mp3))
+            
+            # 校验 MP3 是否生成成功且非空
+            if not tmp_mp3.exists() or tmp_mp3.stat().st_size == 0:
+                print(f"[DEBUG] TTS 合成失败: 无法生成有效的 MP3 文件 (voice={voice})")
+                if tmp_mp3.exists(): tmp_mp3.unlink()
+                return
+
+            try:
+                subprocess.run([
+                    "afconvert", "-f", "WAVE", "-d", "LEI16@44100",
+                    str(tmp_mp3), str(output_path)
+                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print(f"[DEBUG] TTS 转换成功: {output_path.name} ({output_path.stat().st_size} bytes)")
+            except Exception as conv_err:
+                print(f"[DEBUG] WAV 转换失败: {conv_err}")
+            finally:
+                if tmp_mp3.exists(): tmp_mp3.unlink()
+        else:
+            # 正常生成（MP3）
+            communicate = edge_tts.Communicate(
+                text=text,
+                voice=voice,
+                rate=rate,
+                volume=self._volume,
+            )
+            communicate.save_sync(str(output_path))
+            if output_path.exists():
+                print(f"[DEBUG] TTS 合成成功: {output_path.name} ({output_path.stat().st_size} bytes)")
 
     def _speak_sync(self, text: str, voice: str, rate: str) -> None:
         """同步合成语音并播放（内部方法）。

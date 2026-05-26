@@ -223,7 +223,7 @@ class LiveASR:
             enable_endpoint_detection=enable_endpoint_detection,  # 端点检测
         )
 
-    def start(self, callback) -> None:
+    def start(self, callback, device=None) -> None:
         """启动流式语音识别。
 
         在后台守护线程中打开麦克风，持续采集音频数据并送入识别器。
@@ -233,6 +233,7 @@ class LiveASR:
         参数:
             callback: 回调函数，签名为 callback(text: str)。
                       每次识别文字更新时被调用。如果 text 以 \n 结尾，表示句子结束。
+            device: 指定输入设备的索引或名称。如果为 None 则使用默认设备。
         """
         self._running = True
 
@@ -243,42 +244,46 @@ class LiveASR:
             """音频采集和识别的主循环，运行在后台守护线程中。"""
             last_result = ""  # 上一次的识别结果，用于去重
 
-            # 打开默认麦克风的输入流
+            # 打开指定麦克风的输入流
             # channels=1: 单声道
             # dtype="float32": 32 位浮点采样
             # samplerate: 麦克风采样率（sherpa-onnx 内部会自动重采样到 16kHz）
-            with sd.InputStream(
-                channels=1, dtype="float32", samplerate=self._sample_rate
-            ) as s:
-                while self._running:
-                    # 阻塞读取 100ms 的音频数据
-                    samples, _ = s.read(self._samples_per_read)
-                    # 将多维数组展平为一维
-                    samples = samples.reshape(-1)
+            try:
+                with sd.InputStream(
+                    channels=1, dtype="float32", samplerate=self._sample_rate, device=device
+                ) as s:
+                    while self._running:
+                        # 阻塞读取 100ms 的音频数据
+                        samples, _ = s.read(self._samples_per_read)
+                        # 将多维数组展平为一维
+                        samples = samples.reshape(-1)
 
-                    # 将音频波形送入识别流
-                    self._stream.accept_waveform(self._sample_rate, samples)
+                        # 将音频波形送入识别流
+                        self._stream.accept_waveform(self._sample_rate, samples)
 
-                    # 当模型有足够数据可供解码时，持续解码
-                    while self._recognizer.is_ready(self._stream):
-                        self._recognizer.decode_stream(self._stream)
+                        # 当模型有足够数据可供解码时，持续解码
+                        while self._recognizer.is_ready(self._stream):
+                            self._recognizer.decode_stream(self._stream)
 
-                    # 获取当前已经识别出的文字
-                    result = self._recognizer.get_result(self._stream).strip()
+                        # 获取当前已经识别出的文字
+                        result = self._recognizer.get_result(self._stream).strip()
 
-                    # 只有在新结果与上一次不同时才回调（避免重复输出）
-                    if result and result != last_result:
-                        last_result = result
-                        callback(result)
-                    
-                    # 检测到端点（一句话结束/长停顿）
-                    if self._recognizer.is_endpoint(self._stream):
-                        if result:
-                            # 发送一个带换行的最终结果，通知 UI 换行
-                            callback(result + "\n")
-                        # 重置流以清除缓冲区，开始下一句识别
-                        self._recognizer.reset(self._stream)
-                        last_result = ""
+                        # 只有在新结果与上一次不同时才回调（避免重复输出）
+                        if result and result != last_result:
+                            last_result = result
+                            callback(result)
+                        
+                        # 检测到端点（一句话结束/长停顿）
+                        if self._recognizer.is_endpoint(self._stream):
+                            if result:
+                                # 发送一个带换行的最终结果，通知 UI 换行
+                                callback(result + "\n")
+                            # 重置流以清除缓冲区，开始下一句识别
+                            self._recognizer.reset(self._stream)
+                            last_result = ""
+            except Exception as e:
+                print(f"ASR 采集线程崩溃: {e}")
+                if callback: callback(f"ERROR: 无法启动麦克风 ({e})\n")
 
         # 创建守护线程：主线程退出时自动结束，避免阻塞程序退出
         self._thread = threading.Thread(target=_run, daemon=True)

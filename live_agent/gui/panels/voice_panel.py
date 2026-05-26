@@ -10,15 +10,15 @@ from live_agent.gui.workers import AsrWorker
 from live_agent.gui.session_panel import SessionPanel
 from live_agent.gui.rule_table import RuleTable
 from live_agent.gui.rule_editor import RuleEditor
+from live_agent.gui.settings_dialog import get_audio_devices
 
 VOICE_SHORT = {
     "zh-CN-XiaoxiaoNeural": "晓晓",
+    "zh-CN-XiaoyiNeural": "晓伊",
     "zh-CN-YunxiNeural": "云希",
     "zh-CN-YunyangNeural": "云扬",
-    "zh-CN-XiaohanNeural": "晓涵",
-    "zh-CN-XiaoyanNeural": "晓颜",
-    "zh-CN-XiaoshuangNeural": "晓双",
-    "zh-CN-XiaochenNeural": "晓辰",
+    "zh-CN-YunjianNeural": "云健",
+    "zh-CN-YunxiaNeural": "云夏",
 }
 
 class VoicePanel(QWidget):
@@ -82,11 +82,17 @@ class VoicePanel(QWidget):
     def _on_start(self) -> None:
         if self._asr_worker is not None and self._asr_worker.isRunning():
             return
+            
+        # 获取最新的音频设备设置 (in_idx, out_idx, out_name)
+        in_idx, out_idx, out_name = get_audio_devices()
+        self._audio_manager.output_device_index = out_idx
+        self._audio_manager.output_device_name = out_name
+        
         self._matcher = KeywordMatcher(self._rule_store.get_keyword_replies())
         self._history_text = ""
         self._session_panel.clear()
         self._session_panel.set_listening(True)
-        self._asr_worker = AsrWorker(model_dir="models")
+        self._asr_worker = AsrWorker(model_dir="models", device=in_idx)
         self._asr_worker.text_recognized.connect(self._on_text_recognized)
         self._asr_worker.error_occurred.connect(self._on_asr_error)
         self._asr_worker.start()
@@ -150,12 +156,17 @@ class VoicePanel(QWidget):
         rule = self._rule_store.get_by_id(rule_id)
         if rule is None:
             return
-        reply = QMessageBox.question(
-            self, "确认删除",
-            f"确定要删除规则「{rule.keyword}」吗？",
-            QMessageBox.Yes | QMessageBox.No,
-        )
-        if reply == QMessageBox.Yes:
+            
+        msg = QMessageBox(self)
+        msg.setWindowTitle("确认删除")
+        msg.setText(f"确定要删除规则「{rule.keyword}」吗？")
+        msg.setIcon(QMessageBox.Question)
+        yes_btn = msg.addButton("是", QMessageBox.YesRole)
+        no_btn = msg.addButton("否", QMessageBox.NoRole)
+        msg.setDefaultButton(no_btn)
+        msg.exec()
+        
+        if msg.clickedButton() == yes_btn:
             self._rule_store.delete(rule_id)
 
     def _on_enabled_toggled(self, rule_id: str, enabled: bool) -> None:
@@ -166,6 +177,9 @@ class VoicePanel(QWidget):
 
     def _on_play_triggered(self, rule_id: str) -> None:
         print(f"[DEBUG] VoicePanel: 触发试听, rule_id={rule_id}")
+        _, out_idx, out_name = get_audio_devices()
+        self._audio_manager.output_device_index = out_idx
+        self._audio_manager.output_device_name = out_name
         self._audio_manager.play(rule_id)
 
     def _on_generate_all(self) -> None:

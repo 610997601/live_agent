@@ -127,7 +127,17 @@ class KeywordEditorDialog(QDialog):
         row = self.table.currentRow()
         if row < 0: return
         kw = self.table.item(row, 0).text()
-        if QMessageBox.question(self, "确认删除", f"确定要删除规则「{kw}」吗？") == QMessageBox.Yes:
+        
+        msg = QMessageBox(self)
+        msg.setWindowTitle("确认删除")
+        msg.setText(f"确定要删除规则「{kw}」吗？")
+        msg.setIcon(QMessageBox.Question)
+        yes_btn = msg.addButton("是", QMessageBox.YesRole)
+        no_btn = msg.addButton("否", QMessageBox.NoRole)
+        msg.setDefaultButton(no_btn)
+        msg.exec()
+        
+        if msg.clickedButton() == yes_btn:
             self.table.removeRow(row)
 
     def _validate_and_accept(self):
@@ -139,7 +149,15 @@ class KeywordEditorDialog(QDialog):
             processed_rules.append({"keywords": kws, "content": content})
         
         if not processed_rules:
-            if QMessageBox.question(self, "确认清空", "规则列表为空，保存将清空云端所有规则，确定吗？") == QMessageBox.No:
+            msg = QMessageBox(self)
+            msg.setWindowTitle("确认清空")
+            msg.setText("规则列表为空，保存将清空云端所有规则，确定吗？")
+            msg.setIcon(QMessageBox.Question)
+            yes_btn = msg.addButton("是", QMessageBox.YesRole)
+            no_btn = msg.addButton("否", QMessageBox.NoRole)
+            msg.setDefaultButton(no_btn)
+            msg.exec()
+            if msg.clickedButton() == no_btn:
                 return
 
         self.final_rules = processed_rules

@@ -14,15 +14,16 @@ class AsrWorker(QThread):
     text_recognized = Signal(str)
     error_occurred = Signal(str)
 
-    def __init__(self, model_dir: str = "models"):
+    def __init__(self, model_dir: str = "models", device=None):
         super().__init__()
         self._model_dir = model_dir
+        self._device = device
         self._asr: LiveASR | None = None
 
     def run(self) -> None:
         try:
             self._asr = LiveASR(model_dir=self._model_dir)
-            self._asr.start(callback=self._on_text)
+            self._asr.start(callback=self._on_text, device=self._device)
             self.exec()
         except Exception as e:
             self.error_occurred.emit(str(e))
@@ -53,6 +54,8 @@ class AudioGenWorker(QThread):
         self._audio_dir = Path(audio_dir)
 
     def run(self) -> None:
+        import platform
+        system = platform.system()
         total = len(self._rules)
         for i, rule in enumerate(self._rules):
             # 录音类型不需要生成 TTS
@@ -61,15 +64,34 @@ class AudioGenWorker(QThread):
                 continue
             
             try:
-                path = self._audio_dir / f"{rule.id}.mp3"
+                # macOS 下生成目标改为 .wav，其他平台保持 .mp3
+                ext = ".wav" if system == "Darwin" else ".mp3"
+                path = self._audio_dir / f"{rule.id}{ext}"
+
                 self._tts.synthesize_to_file(
                     text=rule.reply,
                     voice=rule.voice,
                     rate=rule.rate,
                     output_path=path,
                 )
+
                 self.rule_done.emit(rule.id)
             except Exception as e:
                 self.error.emit(rule.id, str(e))
             self.progress.emit(i + 1, total)
         self.finished_all.emit()
+
+
+class VoiceFetchWorker(QThread):
+    """在后台线程获取 Edge TTS 音色列表。"""
+    finished = Signal(list)
+
+    def run(self) -> None:
+        import asyncio
+        try:
+            from live_agent.tts import EdgeTTS
+            voices = asyncio.run(EdgeTTS.get_voices())
+            self.finished.emit(voices)
+        except Exception as e:
+            print(f"[DEBUG] VoiceFetchWorker 失败: {e}")
+            self.finished.emit([])

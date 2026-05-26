@@ -1,6 +1,10 @@
 """音频管理器 —— 预生成 TTS 音频文件并通过系统播放器播放。"""
 
 import platform
+import wave
+import threading
+import numpy as np
+import sounddevice as sd
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, QProcess
@@ -29,6 +33,9 @@ class AudioManager(QObject):
         self._current_gen = None
         self._playing = False
         self._current_play: QProcess | None = None
+        
+        self.output_device_index = None # 库索引
+        self.output_device_name = None  # 系统名称
 
     def audio_path(self, rule_id: str) -> Path:
         """优先返回 .wav (录音)，否则返回 .mp3 (TTS)"""
@@ -38,7 +45,10 @@ class AudioManager(QObject):
         return self._dir / f"{rule_id}.mp3"
 
     def has_audio(self, rule_id: str) -> bool:
-        return (self._dir / f"{rule_id}.wav").exists() or (self._dir / f"{rule_id}.mp3").exists()
+        wav_exists = (self._dir / f"{rule_id}.wav").exists()
+        if platform.system() == "Darwin":
+            return wav_exists # macOS 必须要求 wav 才能完美支持设备选择
+        return wav_exists or (self._dir / f"{rule_id}.mp3").exists()
 
     def generate_one(self, rule) -> None:
         """为单条规则生成音频。"""
@@ -68,7 +78,9 @@ class AudioManager(QObject):
     def play(self, rule_id: str) -> None:
         """播放预生成的音频文件。"""
         path = self.audio_path(rule_id)
-        print(f"[DEBUG] AudioManager: 准备播放, rule_id={rule_id}, path={path}")
+        is_wav = path.suffix == ".wav"
+        
+        print(f"[DEBUG] AudioManager: 准备播放, rule_id={rule_id}, path={path}, device_index={self.output_device_index}")
         
         if not path.exists():
             print(f"[DEBUG] AudioManager: 文件不存在!")
@@ -78,21 +90,49 @@ class AudioManager(QObject):
         if self._playing:
             print(f"[DEBUG] AudioManager: 当前正在播放中，跳过请求")
             return
-            
+
+        # 封装 WAV 播放到后台线程，防止 UI 阻塞
+        if is_wav:
+            def _play_wav_task():
+                try:
+                    self._playing = True
+                    self.playback_started.emit(rule_id)
+                    with wave.open(str(path), 'rb') as wf:
+                        data = wf.readframes(wf.getnframes())
+                        samples = np.frombuffer(data, dtype=np.int16)
+                        if wf.getnchannels() == 1:
+                            samples = samples.reshape(-1, 1)
+                        sd.play(samples, wf.getframerate(), device=self.output_device_index)
+                        sd.wait() # 在后台线程等待是安全的
+                    print(f"[DEBUG] AudioManager: WAV 后台播放完成")
+                except Exception as e:
+                    print(f"[DEBUG] AudioManager: WAV 驱动播放失败: {e}")
+                finally:
+                    self._playing = False
+                    self.playback_finished.emit("")
+
+            threading.Thread(target=_play_wav_task, daemon=True).start()
+            return
+        
+        # 对于 MP3，QProcess 本身就是非阻塞的
         self._playing = True
         self._current_play = QProcess()
         self._current_play.finished.connect(self._on_playback_finished)
+        self._current_play.errorOccurred.connect(self._on_playback_error)
         self.playback_started.emit(rule_id)
         
         system = platform.system()
-        print(f"[DEBUG] AudioManager: 系统类型={system}, 启动播放进程...")
-        
         if system == "Darwin":
-            self._current_play.start("afplay", [str(path)])
+            args = [str(path)]
+            if self.output_device_name:
+                args = ["-d", str(self.output_device_name)] + args
+            self._current_play.start("afplay", args)
         elif system == "Linux":
-            self._current_play.start("paplay", [str(path)])
+            args = [str(path)]
+            if self.output_device_name:
+                args = ["--device", str(self.output_device_name)] + args
+            self._current_play.start("paplay", args)
         elif system == "Windows":
-            # 使用支持 MP3 的 MediaPlayer 替代仅支持 WAV 的 SoundPlayer
             ps_cmd = (
                 f"$p = New-Object System.Windows.Media.MediaPlayer; "
                 f"$p.Open([Uri]'{path.absolute().as_uri()}'); "
@@ -100,7 +140,6 @@ class AudioManager(QObject):
                 f"while($p.NaturalDuration.HasTimeSpan -eq $false) {{ Start-Sleep -m 50 }}; "
                 f"Start-Sleep -s [math]::Ceiling($p.NaturalDuration.TimeSpan.TotalSeconds)"
             )
-            print(f"[DEBUG] AudioManager: 执行 PowerShell 指令...")
             self._current_play.start("powershell", [
                 "-c",
                 f"Add-Type -AssemblyName PresentationCore; {ps_cmd}"
@@ -118,9 +157,17 @@ class AudioManager(QObject):
             self._current_gen = None
         self.generation_complete.emit()
 
-    def _on_playback_finished(self) -> None:
+    def _on_playback_finished(self, exit_code, exit_status) -> None:
+        print(f"[DEBUG] AudioManager: 播放进程结束, exit_code={exit_code}, status={exit_status}")
         self._playing = False
         if self._current_play is not None:
             self._current_play.deleteLater()
             self._current_play = None
         self.playback_finished.emit("")
+
+    def _on_playback_error(self, error) -> None:
+        print(f"[DEBUG] AudioManager: 播放进程发生错误: {error}")
+        self._playing = False
+        if self._current_play is not None:
+            self._current_play.deleteLater()
+            self._current_play = None

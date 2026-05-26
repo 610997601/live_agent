@@ -1,0 +1,7 @@
+<svg width="256" height="256" xmlns="http://www.w3.org/2000/svg">
+  <rect width="256" height="256" rx="50" ry="50" fill="#0071e3"/>
+  <text x="64" y="90" font-family="Arial, sans-serif" font-size="70" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="middle">直</text>
+  <text x="192" y="90" font-family="Arial, sans-serif" font-size="70" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="middle">播</text>
+  <text x="64" y="190" font-family="Arial, sans-serif" font-size="70" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="middle">助</text>
+  <text x="192" y="190" font-family="Arial, sans-serif" font-size="70" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="middle">手</text>
+</svg>

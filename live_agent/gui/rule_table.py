@@ -28,12 +28,11 @@ class RuleTable(QGroupBox):
 
     VOICE_SHORT = {
         "zh-CN-XiaoxiaoNeural": "晓晓",
+        "zh-CN-XiaoyiNeural": "晓伊",
         "zh-CN-YunxiNeural": "云希",
         "zh-CN-YunyangNeural": "云扬",
-        "zh-CN-XiaohanNeural": "晓涵",
-        "zh-CN-XiaoyanNeural": "晓颜",
-        "zh-CN-XiaoshuangNeural": "晓双",
-        "zh-CN-XiaochenNeural": "晓辰",
+        "zh-CN-YunjianNeural": "云健",
+        "zh-CN-YunxiaNeural": "云夏",
     }
 
     def __init__(self, parent=None):
@@ -158,7 +157,26 @@ class RuleTable(QGroupBox):
                 voice_item = QTableWidgetItem("--")
                 rate_item = QTableWidgetItem("--")
             else:
-                voice_name = self.VOICE_SHORT.get(rule.voice, rule.voice)
+                # 从全局配置中查找友好的音色名称
+                from live_agent.utils import GlobalConfig
+                voices = GlobalConfig.get_voices()
+                voice_name = rule.voice # 缺省显示 ID
+                for v in voices:
+                    if v.get("ShortName") == rule.voice:
+                        short_name = v.get("ShortName", "")
+                        gender = "女声" if v.get("Gender") == "Female" else "男声"
+                        core_id = short_name.split("-")[-1].replace("Neural", "")
+                        
+                        mapping = {
+                            "Xiaoxiao": "晓晓", "Xiaoyi": "晓伊", "Yunxi": "云希", 
+                            "Yunyang": "云扬", "Yunjian": "云健", "Yunxia": "云夏",
+                            "Xiaobei": "晓北 (东北话)", "Xiaoni": "晓妮 (陕西话)"
+                        }
+                        
+                        name = mapping.get(core_id, core_id)
+                        voice_name = f"{name} ({gender})"
+                        break
+                
                 voice_item = QTableWidgetItem(voice_name)
                 rate_item = QTableWidgetItem(rule.rate)
 

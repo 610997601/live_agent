@@ -15,15 +15,7 @@ from PySide6.QtWidgets import (
     QPushButton, QStackedWidget, QWidget
 )
 
-VOICES = [
-    ("zh-CN-XiaoxiaoNeural", "晓晓 (活泼温暖女声)"),
-    ("zh-CN-YunxiNeural", "云希 (阳光有冲劲男声)"),
-    ("zh-CN-YunyangNeural", "云扬 (专业沉稳男声)"),
-    ("zh-CN-XiaohanNeural", "晓涵 (温暖甜美女生)"),
-    ("zh-CN-XiaoyanNeural", "晓颜 (客服口吻女声)"),
-    ("zh-CN-XiaoshuangNeural", "晓双 (可爱女生)"),
-    ("zh-CN-XiaochenNeural", "晓辰 (自然女声)"),
-]
+from live_agent.utils import GlobalConfig
 
 RATE_OPTIONS = [
     "-50%", "-30%", "-20%", "-10%", "+0%",
@@ -86,8 +78,29 @@ class RuleEditor(QDialog):
         tts_layout.addWidget(QLabel("<b>语音音色:</b>"))
         self.voice_combo = QComboBox()
         self.voice_combo.setMinimumHeight(40)
-        for value, label in VOICES:
-            self.voice_combo.addItem(label, value)
+        
+        # 动态加载音色
+        voices = GlobalConfig.get_voices()
+        for v in voices:
+            short_name = v.get("ShortName", "")
+            friendly_name = v.get("FriendlyName", "")
+            gender = "女声" if v.get("Gender") == "Female" else "男声"
+            
+            # 1. 尝试从 ShortName 提取核心 ID 并映射中文
+            # zh-CN-XiaoxiaoNeural -> Xiaoxiao
+            core_id = short_name.split("-")[-1].replace("Neural", "")
+            
+            mapping = {
+                "Xiaoxiao": "晓晓", "Xiaoyi": "晓伊", "Yunxi": "云希", 
+                "Yunyang": "云扬", "Yunjian": "云健", "Yunxia": "云夏",
+                "Xiaobei": "晓北 (东北话)", "Xiaoni": "晓妮 (陕西话)"
+            }
+            
+            name = mapping.get(core_id, core_id)
+            display_name = f"{name} ({gender})"
+            
+            self.voice_combo.addItem(display_name, short_name)
+            
         tts_layout.addWidget(self.voice_combo)
 
         tts_layout.addWidget(QLabel("<b>语音语速:</b>"))
@@ -335,5 +348,6 @@ class RuleEditor(QDialog):
             reply=self.reply_edit.toPlainText().strip(),
             voice=self.voice_combo.currentData(),
             rate=self.rate_combo.currentText(),
-            reply_type=self.type_combo.currentData()
+            reply_type=self.type_combo.currentData(),
+            enabled=getattr(self._rule, "enabled", True) if self._rule else True
         )

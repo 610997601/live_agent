@@ -152,7 +152,17 @@ class DanmakuPanel(QWidget):
         row = self.danmu_table.currentRow()
         if row < 0: return
         content = self.danmu_table.item(row, 1).text()
-        if QMessageBox.question(self, "确认删除", f"确定要删除弹幕「{content}」吗？") == QMessageBox.Yes:
+        
+        msg = QMessageBox(self)
+        msg.setWindowTitle("确认删除")
+        msg.setText(f"确定要删除弹幕「{content}」吗？")
+        msg.setIcon(QMessageBox.Question)
+        yes_btn = msg.addButton("是", QMessageBox.YesRole)
+        no_btn = msg.addButton("否", QMessageBox.NoRole)
+        msg.setDefaultButton(no_btn)
+        msg.exec()
+        
+        if msg.clickedButton() == yes_btn:
             self.danmu_table.removeRow(row)
             self._save_local_rules()
 
