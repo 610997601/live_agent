@@ -18,6 +18,8 @@ class Rule:
     reply: str = ""
     voice: str = "zh-CN-YunxiNeural"
     rate: str = "+0%"
+    reply_type: str = "tts"  # "tts" 或 "record"
+    enabled: bool = True
 
     def to_dict(self) -> dict:
         return {
@@ -26,6 +28,8 @@ class Rule:
             "reply": self.reply,
             "voice": self.voice,
             "rate": self.rate,
+            "reply_type": self.reply_type,
+            "enabled": self.enabled,
         }
 
     @classmethod
@@ -36,6 +40,8 @@ class Rule:
             reply=d.get("reply", ""),
             voice=d.get("voice", "zh-CN-YunxiNeural"),
             rate=d.get("rate", "+0%"),
+            reply_type=d.get("reply_type", "tts"),
+            enabled=d.get("enabled", True),
         )
 
 

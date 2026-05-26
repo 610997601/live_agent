@@ -1,6 +1,7 @@
 """会话控制面板 —— 开始/停止按钮、识别文字显示、命中提示。"""
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QGroupBox, QVBoxLayout, QHBoxLayout, QPushButton,
     QTextEdit, QLabel, QSizePolicy,
@@ -84,7 +85,7 @@ class SessionPanel(QGroupBox):
             full_text = history + active
             
         self.text_display.setPlainText(full_text)
-        self.text_display.moveCursor(Qt.TextCursor.End)
+        self.text_display.moveCursor(QTextCursor.End)
 
     def clear(self) -> None:
         self.text_display.clear()

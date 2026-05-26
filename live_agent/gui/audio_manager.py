@@ -31,10 +31,14 @@ class AudioManager(QObject):
         self._current_play: QProcess | None = None
 
     def audio_path(self, rule_id: str) -> Path:
+        """优先返回 .wav (录音)，否则返回 .mp3 (TTS)"""
+        wav_path = self._dir / f"{rule_id}.wav"
+        if wav_path.exists():
+            return wav_path
         return self._dir / f"{rule_id}.mp3"
 
     def has_audio(self, rule_id: str) -> bool:
-        return self.audio_path(rule_id).exists()
+        return (self._dir / f"{rule_id}.wav").exists() or (self._dir / f"{rule_id}.mp3").exists()
 
     def generate_one(self, rule) -> None:
         """为单条规则生成音频。"""
@@ -64,16 +68,25 @@ class AudioManager(QObject):
     def play(self, rule_id: str) -> None:
         """播放预生成的音频文件。"""
         path = self.audio_path(rule_id)
+        print(f"[DEBUG] AudioManager: 准备播放, rule_id={rule_id}, path={path}")
+        
         if not path.exists():
+            print(f"[DEBUG] AudioManager: 文件不存在!")
             self.audio_missing.emit(rule_id)
             return
+        
         if self._playing:
+            print(f"[DEBUG] AudioManager: 当前正在播放中，跳过请求")
             return
+            
         self._playing = True
         self._current_play = QProcess()
         self._current_play.finished.connect(self._on_playback_finished)
         self.playback_started.emit(rule_id)
+        
         system = platform.system()
+        print(f"[DEBUG] AudioManager: 系统类型={system}, 启动播放进程...")
+        
         if system == "Darwin":
             self._current_play.start("afplay", [str(path)])
         elif system == "Linux":
@@ -87,6 +100,7 @@ class AudioManager(QObject):
                 f"while($p.NaturalDuration.HasTimeSpan -eq $false) {{ Start-Sleep -m 50 }}; "
                 f"Start-Sleep -s [math]::Ceiling($p.NaturalDuration.TimeSpan.TotalSeconds)"
             )
+            print(f"[DEBUG] AudioManager: 执行 PowerShell 指令...")
             self._current_play.start("powershell", [
                 "-c",
                 f"Add-Type -AssemblyName PresentationCore; {ps_cmd}"

@@ -144,8 +144,8 @@ QTableWidget::item {
 }
 
 QTableWidget::item:selected {
-    background-color: #0071e3;
-    color: #ffffff;
+    background-color: #e5f1ff;
+    color: #1d1d1f;
 }
 
 QTableWidget::item:alternate {
@@ -157,7 +157,7 @@ QTableWidget::item:hover {
 }
 
 QTableWidget::item:selected:hover {
-    background-color: #0071e3;
+    background-color: #d1e8ff;
 }
 
 QHeaderView::section {

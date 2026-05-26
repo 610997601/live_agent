@@ -122,16 +122,19 @@ class BuYin(QObject):
             )
 
             # 定义统一的内部清理逻辑
-            def handle_internal_close():
-                if self.playwright:
-                    logger.info("后台：感知到浏览器或页面已关闭，执行清理...")
-                    self._clear_pid_file()
-                    self.page = None
-                    self.context = None
-                    self.playwright = None
-                    self.loop.call_soon_threadsafe(self.browser_closed.emit)
+            def handle_internal_close(source):
+                logger.info(f"后台：感知到 {source} 已关闭，准备执行清理...")
+                # 异步执行彻底关闭
+                self.run_async(self._do_close(False))
+                # 通知 UI 层
+                self.loop.call_soon_threadsafe(self.browser_closed.emit)
 
-            self.context.on("close", lambda _: handle_internal_close())
+            # 监听整个浏览上下文的关闭
+            self.context.on("close", lambda _: handle_internal_close("Context"))
+            self.context.on("crash", lambda _: handle_internal_close("Context Crashed"))
+            
+            # 监听 Playwright 驱动断开（浏览器进程被强制杀死）
+            self.playwright.on("disconnect", lambda _: handle_internal_close("Playwright Disconnected"))
             
             # 资源拦截逻辑
             await self.context.route("**/*", lambda route: self._resource_blocker(route))
@@ -152,7 +155,8 @@ class BuYin(QObject):
 
             # 3. 页面初始化
             self.page = await self.context.new_page()
-            self.page.on("close", lambda _: handle_internal_close())
+            # 监听特定页面的关闭
+            self.page.on("close", lambda _: handle_internal_close("Page"))
 
             self._record_pid()
             asyncio.create_task(self._dom_cleaner_loop())
@@ -275,12 +279,23 @@ class BuYin(QObject):
 
     async def _do_close(self, clear_data):
         try:
-            if self.context: await self.context.close(); self.context = None
-            if self.playwright: await self.playwright.stop(); self.playwright = None
+            if self.context:
+                try: await self.context.close()
+                except: pass
+                self.context = None
+            
+            if self.playwright:
+                try: await self.playwright.stop()
+                except: pass
+                self.playwright = None
+            
             self.page = None
+            self._clear_pid_file()
+            
             if clear_data: self._clear_local_data()
             logger.info("后台资源释放完毕")
-        except: pass
+        except Exception as e:
+            logger.error(f"释放资源时出现异常: {e}")
 
     def _clear_local_data(self):
         if os.path.exists(USER_DATA_DIR):
