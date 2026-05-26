@@ -13,13 +13,16 @@ if exist build rmdir /s /q build
 
 :: 2. Environment Setup
 :: Force Playwright to install browsers in the project directory
-set PLAYWRIGHT_BROWSERS_PATH=0
+set PLAYWRIGHT_BROWSERS_PATH=ms-playwright
 
 echo [*] Syncing dependencies with uv...
 uv sync
 
 echo [*] Ensuring browser kernel is ready...
 uv run playwright install chromium
+
+echo [*] Ensuring ASR models are ready...
+uv run python -c "from live_agent.asr import _download_model; from pathlib import Path; _download_model(Path('models'))"
 
 :: 3. Packaging
 echo [*] Running PyInstaller with build.spec...
@@ -34,7 +37,7 @@ echo Executable:      dist\直播助手\直播助手.exe
 echo ===================================================
 echo.
 echo [Note]:
-echo 1. Ensure models/ directory contains full ASR models before running.
+echo 1. Browser drivers and ASR models are now bundled in the dist folder.
 echo 2. If app fails to start, change 'console=False' to 'True' in build.spec and rebuild to see logs.
 echo.
 

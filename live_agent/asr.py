@@ -91,7 +91,12 @@ def _resolve_model_dir(model_dir: str | Path) -> Path:
     """解析模型目录，优先使用 PyInstaller 打包的内置模型。"""
     model_dir = Path(model_dir)
     if getattr(sys, "frozen", False):
-        bundled = Path(sys._MEIPASS) / "models"
+        bundle_dir = Path(sys._MEIPASS)
+        # 兼容 PyInstaller 6.x onedir 布局
+        bundled = bundle_dir / "models"
+        if not bundled.exists():
+            bundled = bundle_dir / "_internal" / "models"
+            
         if bundled.exists():
             return bundled
     return model_dir

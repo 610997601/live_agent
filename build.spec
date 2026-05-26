@@ -4,7 +4,8 @@ from PyInstaller.utils.hooks import collect_all
 # 定义需要全量收集的重度依赖包
 datas = [
     ('live_agent', 'live_agent'), 
-    ('models', 'models')
+    ('models', 'models'),
+    ('ms-playwright', 'ms-playwright')
 ]
 binaries = []
 hiddenimports = [

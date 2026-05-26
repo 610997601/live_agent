@@ -27,11 +27,14 @@ AES_KEY = "ecom-did-sdk"
 
 # --- 打包兼容逻辑 ---
 def setup_playwright_env():
-    """如果是打包环境，确保环境变量正确（配合 PLAYWRIGHT_BROWSERS_PATH=0 方案）"""
+    """如果是打包环境，确保环境变量正确"""
     if getattr(sys, 'frozen', False):
-        # 在 PyInstaller 环境中，PLAYWRIGHT 默认会查找包内路径
-        # 这里我们确保内部驱动能找到 bundled 的浏览器
-        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "0"
+        # 优先使用 run_gui.py 或外部设置好的路径
+        if "PLAYWRIGHT_BROWSERS_PATH" not in os.environ:
+            from pathlib import Path
+            bundle_dir = Path(sys._MEIPASS)
+            os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(bundle_dir / "ms-playwright")
+        logger.debug(f"Playwright 浏览器路径: {os.environ.get('PLAYWRIGHT_BROWSERS_PATH')}")
 
 class BuYin(QObject):
     """百应业务逻辑类：负责 Playwright 自动化、凭证提取及接口代理"""

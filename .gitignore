@@ -1,3 +1,7 @@
+# ===================================================
+#   Live Assistant Git Ignore Configuration
+# ===================================================
+
 # --- Python ---
 __pycache__/
 *.py[cod]
@@ -5,10 +9,7 @@ __pycache__/
 *.so
 .Python
 env/
-build/
 develop-eggs/
-dist/
-downloads/
 eggs/
 .eggs/
 lib/
@@ -22,27 +23,44 @@ wheels/
 *.egg
 .pytest_cache/
 
-# --- Virtual Environments ---
+# --- Virtual Environments (uv/venv) ---
 .venv/
 venv/
 ENV/
 
-# --- ASR Models & Large Files ---
-models/*
-!models/.gitkeep
+# --- Heavy Assets (Downloaded at runtime) ---
+# Ignore binary models and browser drivers to keep repo light
+models/
+ms-playwright/
 *.tar.bz2
 *.onnx
 
-# --- Project Specific Data (Local) ---
+# --- Build Artifacts ---
+build/
+dist/
+*.spec
+# Ignore generated installers
+直播助手_安装包_*.exe
+
+# --- Project Specific Local Data ---
+# Browser sessions and cookies
 browser_session/
+# Temporary data/logs
 data/
+*.log
+.cache/
+
+# --- Config & Secrets ---
+.env
+.env.local
+.env.*
+
+# --- Spreadsheets ---
+# Ignore general xlsx, but allow template/default ones if they exist
 *.xlsx
 *.xls
 !关键词回复规则.xlsx
 !定时弹幕规则.xlsx
-
-# --- Packaging ---
-# .spec files are kept for custom build configuration
 
 # --- OS Metadata ---
 .DS_Store
@@ -60,11 +78,6 @@ desktop.ini
 .pydevproject
 .settings/
 
-# --- Logs & Temp ---
-*.log
-.env
-.env.local
-.cache/
-
-# --- UV (Keep uv.lock for consistent environments) ---
-# !uv.lock 
+# --- UV ---
+# uv.lock is NOT ignored as it's critical for reproducible builds
+# .python-version is NOT ignored for environment consistency

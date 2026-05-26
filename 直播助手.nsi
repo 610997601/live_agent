@@ -1,4 +1,4 @@
-; 直播助手.nsi
+﻿; 直播助手.nsi
 ; 直播助手 Windows 安装包脚本
 
 !define APP_NAME "直播助手"
