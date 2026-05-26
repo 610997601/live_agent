@@ -2,6 +2,7 @@
 
 import threading
 import requests
+import logging
 from datetime import datetime, timedelta, timezone
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QImage, QPixmap
@@ -14,6 +15,8 @@ from live_agent.buyin import BuYin
 from live_agent.gui.panels.voice_panel import VoicePanel
 from live_agent.gui.panels.reply_panel import ReplyPanel
 from live_agent.gui.panels.danmaku_panel import DanmakuPanel
+
+logger = logging.getLogger("MainWindow")
 
 class MainWindow(QMainWindow):
     """集成了语音识别、回复配置及定时弹幕的统一主窗口。"""
@@ -193,6 +196,10 @@ class MainWindow(QMainWindow):
         self.content_stack.setCurrentIndex(index)
 
     def _on_login_click(self):
+        # 防抖：禁止 3s 内重复点击
+        self.login_btn.setEnabled(False)
+        QTimer.singleShot(3000, lambda: self.login_btn.setEnabled(True))
+
         if not self.is_browser_open:
             self.buyin.start_browser()
         else:
@@ -204,6 +211,7 @@ class MainWindow(QMainWindow):
         self.monitor_timer.stop()
         if self.is_browser_open:
             self.buyin.close_browser()
+        # 必须先重置状态，否则 _on_browser_closed 可能会被多次触发或逻辑重叠
         self.is_browser_open = False
         self.ewid = None
         self.is_live = False
@@ -224,14 +232,24 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _on_browser_closed(self):
+        """当浏览器意外关闭时触发。"""
         if self.is_browser_open:
-            self.is_browser_open = False
+            logger.warning("检测到浏览器意外关闭")
             self._logout()
-            # 延迟 100ms 弹出提示并退出，确保状态更新完成
-            QTimer.singleShot(100, lambda: (
-                QMessageBox.critical(self, "连接断开", "百应浏览器已关闭，为保证同步安全，程序将退出。"),
-                QApplication.quit()
-            ))
+            
+            # 弹出提示，询问是否重新启动浏览器，不再直接退出程序
+            reply = QMessageBox.question(
+                self, "连接断开", 
+                "百应浏览器已意外关闭（或页面被关闭）。\n\n是否立即重新启动并尝试恢复？",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+            
+            if reply == QMessageBox.Yes:
+                logger.info("用户选择重新启动浏览器")
+                self.buyin.start_browser()
+            else:
+                logger.info("用户选择暂不启动")
 
     @Slot(dict)
     def _on_data_ready(self, res):

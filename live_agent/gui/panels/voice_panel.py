@@ -61,6 +61,8 @@ class VoicePanel(QWidget):
         self._rule_table.edit_clicked.connect(self._on_edit_rule)
         self._rule_table.delete_clicked.connect(self._on_delete_rule)
         self._rule_table.generate_clicked.connect(self._on_generate_all)
+        self._rule_table.enabled_toggled.connect(self._on_enabled_toggled)
+        self._rule_table.play_triggered.connect(self._on_play_triggered)
         self._rule_store.rules_changed.connect(self._on_rules_changed)
         self._audio_manager.generation_progress.connect(self._on_gen_progress)
         self._audio_manager.generation_complete.connect(self._on_gen_complete)
@@ -112,6 +114,11 @@ class VoicePanel(QWidget):
             rule = self._rule_store.get_by_keyword(hit.keyword)
             if rule is None:
                 return
+            
+            # 只有开启的规则才执行回复
+            if not getattr(rule, "enabled", True):
+                return
+
             voice_name = VOICE_SHORT.get(rule.voice, rule.voice)
             self._session_panel.show_hit(hit.keyword, rule.reply, voice_name)
             self._audio_manager.play(rule.id)
@@ -150,6 +157,16 @@ class VoicePanel(QWidget):
         )
         if reply == QMessageBox.Yes:
             self._rule_store.delete(rule_id)
+
+    def _on_enabled_toggled(self, rule_id: str, enabled: bool) -> None:
+        rule = self._rule_store.get_by_id(rule_id)
+        if rule:
+            rule.enabled = enabled
+            self._rule_store.update(rule)
+
+    def _on_play_triggered(self, rule_id: str) -> None:
+        print(f"[DEBUG] VoicePanel: 触发试听, rule_id={rule_id}")
+        self._audio_manager.play(rule_id)
 
     def _on_generate_all(self) -> None:
         rules = self._rule_store.get_all()

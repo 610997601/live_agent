@@ -55,6 +55,11 @@ class AudioGenWorker(QThread):
     def run(self) -> None:
         total = len(self._rules)
         for i, rule in enumerate(self._rules):
+            # 录音类型不需要生成 TTS
+            if hasattr(rule, "reply_type") and rule.reply_type == "record":
+                self.progress.emit(i + 1, total)
+                continue
+            
             try:
                 path = self._audio_dir / f"{rule.id}.mp3"
                 self._tts.synthesize_to_file(
