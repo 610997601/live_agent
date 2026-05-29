@@ -32,8 +32,8 @@ uv run pyinstaller --noconfirm --clean build.spec
 echo.
 echo ===================================================
 echo [OK] Build Finished!
-echo Result location: dist\直播助手\
-echo Executable:      dist\直播助手\直播助手.exe
+echo Result location: dist\LiveAssistant\
+echo Executable:      dist\LiveAssistant\直播助手.exe
 echo ===================================================
 echo.
 echo [Note]:

@@ -5,17 +5,19 @@ import sys
 from pathlib import Path
 
 # --- 运行时环境设置 ---
-if getattr(sys, "frozen", False):
-    # PyInstaller 打包后的临时目录
-    bundle_dir = Path(sys._MEIPASS)
-    
-    # PyInstaller 6.x 在 onedir 模式下会将数据放入 _internal 文件夹
-    browsers_path = bundle_dir / "ms-playwright"
-    if not browsers_path.exists():
-        browsers_path = bundle_dir / "_internal" / "ms-playwright"
-    
-    # 强制 Playwright 使用打包进去的浏览器驱动
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(browsers_path)
+bundle_dir = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).parent
+
+# 探测顺序：1. 压缩包根目录 2. _internal 目录 (PyInstaller 6) 3. 项目根目录
+potential_paths = [
+    bundle_dir / "ms-playwright",
+    bundle_dir / "_internal" / "ms-playwright",
+    Path(os.getcwd()) / "ms-playwright"
+]
+
+for p in potential_paths:
+    if p.exists():
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(p)
+        break
 
 from live_agent.gui.app import main
 

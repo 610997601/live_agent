@@ -54,6 +54,7 @@ data/
 .env
 .env.local
 .env.*
+!.env.template
 
 # --- Spreadsheets ---
 # Ignore general xlsx, but allow template/default ones if they exist

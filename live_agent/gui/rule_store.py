@@ -18,8 +18,10 @@ class Rule:
     reply: str = ""
     voice: str = "zh-CN-YunxiNeural"
     rate: str = "+0%"
-    reply_type: str = "tts"  # "tts" 或 "record"
+    reply_type: str = "tts"  # "tts", "record", 或 "clone"
     enabled: bool = True
+    cdn_url: str = ""        # 腾讯云 COS 地址
+    audio_md5: str = ""      # 音频文件 MD5，用于校验
 
     def to_dict(self) -> dict:
         return {
@@ -30,6 +32,8 @@ class Rule:
             "rate": self.rate,
             "reply_type": self.reply_type,
             "enabled": self.enabled,
+            "cdn_url": self.cdn_url,
+            "audio_md5": self.audio_md5,
         }
 
     @classmethod
@@ -42,6 +46,8 @@ class Rule:
             rate=d.get("rate", "+0%"),
             reply_type=d.get("reply_type", "tts"),
             enabled=d.get("enabled", True),
+            cdn_url=d.get("cdn_url", ""),
+            audio_md5=d.get("audio_md5", ""),
         )
 
 

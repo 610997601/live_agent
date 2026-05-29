@@ -55,18 +55,36 @@ class SessionPanel(QGroupBox):
         self.hit_label.setWordWrap(True)
         layout.addWidget(self.hit_label)
 
-    def set_listening(self, active: bool) -> None:
-        if active:
-            self.status_label.setText("●  监听中...")
-            self.status_label.setObjectName("statusActive")
+    def set_asr_state(self, state: str) -> None:
+        """
+        更新 ASR 状态显示。
+        state: "initializing", "running", "failed", "stopped"
+        """
+        if state == "initializing":
+            self.status_label.setText("●  初始化中...")
+            self.status_label.setObjectName("statusLabel") # 保持灰色或蓝色
+            self.status_label.setStyleSheet("color: #0071e3;") # 蓝色提示
             self.start_btn.setEnabled(False)
             self.stop_btn.setEnabled(True)
-        else:
+        elif state == "running":
+            self.status_label.setText("●  正在监听...")
+            self.status_label.setObjectName("statusActive") # 绿色
+            self.status_label.setStyleSheet("") # 还原样式
+            self.start_btn.setEnabled(False)
+            self.stop_btn.setEnabled(True)
+        elif state == "failed":
+            self.status_label.setText("●  启动失败")
+            self.status_label.setStyleSheet("color: #ff3b30;") # 红色
+            self.start_btn.setEnabled(True)
+            self.stop_btn.setEnabled(False)
+        else: # stopped
             self.status_label.setText("●  等待开始")
             self.status_label.setObjectName("statusLabel")
+            self.status_label.setStyleSheet("")
             self.start_btn.setEnabled(True)
             self.stop_btn.setEnabled(False)
 
+        # 刷新样式
         self.status_label.style().unpolish(self.status_label)
         self.status_label.style().polish(self.status_label)
 

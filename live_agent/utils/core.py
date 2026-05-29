@@ -1,34 +1,8 @@
 import os
-import platform
-import logging
 import json
+from .logger import get_logger, get_app_data_dir
 
-logger = logging.getLogger("Utils")
-
-def get_app_data_dir():
-    """获取跨平台的应用数据存储目录"""
-    system = platform.system()
-    if system == "Windows":
-        base = os.environ.get('APPDATA') or os.path.expanduser('~')
-    elif system == "Darwin":
-        base = os.path.expanduser('~/Library/Application Support')
-    else:
-        # Linux 遵循 XDG 规范
-        base = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
-    
-    app_dir = os.path.join(base, "BuyinAssistant")
-
-    if not os.path.exists(app_dir):
-        try:
-            os.makedirs(app_dir, exist_ok=True)
-            logger.info(f"创建应用数据目录: {app_dir}")
-        except Exception as e:
-            logger.error(f"无法创建数据目录: {e}")
-            # 回退到当前目录
-            app_dir = os.path.join(os.getcwd(), "data")
-            os.makedirs(app_dir, exist_ok=True)
-            
-    return app_dir
+logger = get_logger("Utils")
 
 class ConfigManager:
     """管理本地持久化配置 (如定时弹幕规则)，支持根据 outer_id 隔离"""

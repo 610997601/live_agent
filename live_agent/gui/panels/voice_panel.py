@@ -37,12 +37,6 @@ class VoicePanel(QWidget):
         self._connect_signals()
         self._on_rules_changed()
 
-        # 预生成缺失音频
-        rules = self._rule_store.get_all()
-        missing = [r for r in rules if not self._audio_manager.has_audio(r.id)]
-        if missing:
-            self._audio_manager.generate_all(missing)
-
     def _init_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -60,7 +54,8 @@ class VoicePanel(QWidget):
         self._rule_table.add_clicked.connect(self._on_add_rule)
         self._rule_table.edit_clicked.connect(self._on_edit_rule)
         self._rule_table.delete_clicked.connect(self._on_delete_rule)
-        self._rule_table.generate_clicked.connect(self._on_generate_all)
+        self._rule_table.import_clicked.connect(self._on_import_rules)
+        self._rule_table.export_clicked.connect(self._on_export_rules)
         self._rule_table.enabled_toggled.connect(self._on_enabled_toggled)
         self._rule_table.play_triggered.connect(self._on_play_triggered)
         self._rule_store.rules_changed.connect(self._on_rules_changed)
@@ -75,7 +70,7 @@ class VoicePanel(QWidget):
             self._asr_worker = None
         self._matcher = None
         self._history_text = ""
-        self._session_panel.set_listening(False)
+        self._session_panel.set_asr_state("stopped")
 
     # -- Session ----------------------------------------------------------
 
@@ -91,9 +86,13 @@ class VoicePanel(QWidget):
         self._matcher = KeywordMatcher(self._rule_store.get_keyword_replies())
         self._history_text = ""
         self._session_panel.clear()
-        self._session_panel.set_listening(True)
+        
+        # 初始状态设为初始化
+        self._session_panel.set_asr_state("initializing")
+        
         self._asr_worker = AsrWorker(model_dir="models", device=in_idx)
         self._asr_worker.text_recognized.connect(self._on_text_recognized)
+        self._asr_worker.state_changed.connect(self._session_panel.set_asr_state) # 连接状态变更
         self._asr_worker.error_occurred.connect(self._on_asr_error)
         self._asr_worker.start()
 
@@ -130,8 +129,14 @@ class VoicePanel(QWidget):
             self._audio_manager.play(rule.id)
 
     def _on_asr_error(self, error: str) -> None:
-        self._session_panel.set_listening(False)
-        QMessageBox.critical(self, "ASR 错误", f"语音识别出错:\n{error}")
+        self._session_panel.set_asr_state("failed")
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("ASR 错误")
+        msg_box.setText("语音识别模块发生错误。")
+        msg_box.setInformativeText("请查看下方详细信息以进行排查。")
+        msg_box.setDetailedText(error)
+        msg_box.setIcon(QMessageBox.Critical)
+        msg_box.exec()
 
     # -- Rule CRUD --------------------------------------------------------
 
@@ -182,10 +187,65 @@ class VoicePanel(QWidget):
         self._audio_manager.output_device_name = out_name
         self._audio_manager.play(rule_id)
 
-    def _on_generate_all(self) -> None:
-        rules = self._rule_store.get_all()
-        if rules:
-            self._audio_manager.generate_all(rules)
+    def _on_export_rules(self):
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(self, "导出语音规则", "voice_rules_export.json", "JSON Files (*.json)")
+        if path:
+            try:
+                import json
+                from pathlib import Path
+                rules = [r.to_dict() for r in self._rule_store.get_all()]
+                data = {"version": 1, "rules": rules}
+                Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+                QMessageBox.information(self, "成功", "语音规则导出完成。")
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"导出失败: {e}")
+
+    def _on_import_rules(self):
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(self, "导入语音规则", "", "JSON Files (*.json)")
+        if not path: return
+        
+        try:
+            import json
+            from pathlib import Path
+            from live_agent.gui.rule_store import Rule
+            from live_agent.gui.workers import DownloadWorker
+
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+            imported_rules = [Rule.from_dict(d) for r in data.get("rules", [])]
+            
+            count = 0
+            download_count = 0
+            for new_rule in imported_rules:
+                # 根据关键词合并
+                existing = self._rule_store.get_by_keyword(new_rule.keyword)
+                if existing:
+                    # 保留原 ID，更新其他内容
+                    new_rule.id = existing.id
+                    self._rule_store.update(new_rule)
+                else:
+                    self._rule_store.add(new_rule)
+                count += 1
+                
+                # 检查并自动下载音频
+                if new_rule.cdn_url and not self._audio_manager.has_audio(new_rule.id):
+                    ext = ".wav" if new_rule.reply_type in ["record", "clone"] else ".mp3"
+                    dest = self._audio_manager._dir / f"{new_rule.id}{ext}"
+                    
+                    dw = DownloadWorker(new_rule.cdn_url, dest)
+                    dw.finished.connect(lambda p, s, e: self._on_rules_changed())
+                    dw.start()
+                    download_count += 1
+            
+            msg = f"成功导入 {count} 条规则。"
+            if download_count > 0:
+                msg += f"\n正在后台同步 {download_count} 个音频文件..."
+            QMessageBox.information(self, "成功", msg)
+            self._on_rules_changed()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"导入失败: {e}")
 
     # -- Rule changes -----------------------------------------------------
 

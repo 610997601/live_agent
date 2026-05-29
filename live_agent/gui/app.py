@@ -243,6 +243,9 @@ QDialog {
 
 
 def main():
+    from live_agent.utils.logger import setup_logging
+    setup_logging()
+
     # Windows 任务栏图标修复：让 Windows 识别这是一个独立的 App，而不是 Python 脚本
     import platform
     if platform.system() == "Windows":
@@ -251,7 +254,7 @@ def main():
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
     app = QApplication(sys.argv)
-    app.setApplicationName("直播助手")
+    app.setApplicationName("直播助手-内测版")
     app.setOrganizationName("live_agent")
     app.setStyleSheet(STYLESHEET)
 

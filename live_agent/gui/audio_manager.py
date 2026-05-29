@@ -7,7 +7,8 @@ import numpy as np
 import sounddevice as sd
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Signal, QProcess
+from PySide6.QtCore import QObject, Signal, QUrl
+from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from live_agent.tts import EdgeTTS
 from live_agent.utils import get_app_data_dir
@@ -29,13 +30,26 @@ class AudioManager(QObject):
             storage_dir = Path(get_app_data_dir())
         self._dir = Path(storage_dir) / "audio"
         self._dir.mkdir(parents=True, exist_ok=True)
+        
+        # 新增：物理隔离的临时文件夹
+        self._temp_dir = self._dir / "temp"
+        self._temp_dir.mkdir(parents=True, exist_ok=True)
+        
         self._tts = EdgeTTS()
         self._current_gen = None
         self._playing = False
-        self._current_play: QProcess | None = None
         
-        self.output_device_index = None # 库索引
-        self.output_device_name = None  # 系统名称
+        # 使用 QtMultimedia 进行播放 (MP3)
+        self._player = QMediaPlayer()
+        self._audio_output = QAudioOutput()
+        self._player.setAudioOutput(self._audio_output)
+        
+        # 信号连接
+        self._player.mediaStatusChanged.connect(self._on_media_status_changed)
+        self._player.errorOccurred.connect(self._on_player_error)
+        
+        self.output_device_index = None # 库索引 (用于 sd 播放 WAV)
+        self.output_device_name = None  # 系统名称 (针对 QAudioDevice)
 
     def audio_path(self, rule_id: str) -> Path:
         """优先返回 .wav (录音)，否则返回 .mp3 (TTS)"""
@@ -46,8 +60,6 @@ class AudioManager(QObject):
 
     def has_audio(self, rule_id: str) -> bool:
         wav_exists = (self._dir / f"{rule_id}.wav").exists()
-        if platform.system() == "Darwin":
-            return wav_exists # macOS 必须要求 wav 才能完美支持设备选择
         return wav_exists or (self._dir / f"{rule_id}.mp3").exists()
 
     def generate_one(self, rule) -> None:
@@ -88,10 +100,10 @@ class AudioManager(QObject):
             return
         
         if self._playing:
-            print(f"[DEBUG] AudioManager: 当前正在播放中，跳过请求")
-            return
+            print(f"[DEBUG] AudioManager: 当前正在播放中，尝试停止旧播放")
+            self.stop_current()
 
-        # 封装 WAV 播放到后台线程，防止 UI 阻塞
+        # 封装 WAV 播放到后台线程 (sd 驱动)
         if is_wav:
             def _play_wav_task():
                 try:
@@ -103,7 +115,7 @@ class AudioManager(QObject):
                         if wf.getnchannels() == 1:
                             samples = samples.reshape(-1, 1)
                         sd.play(samples, wf.getframerate(), device=self.output_device_index)
-                        sd.wait() # 在后台线程等待是安全的
+                        sd.wait()
                     print(f"[DEBUG] AudioManager: WAV 后台播放完成")
                 except Exception as e:
                     print(f"[DEBUG] AudioManager: WAV 驱动播放失败: {e}")
@@ -114,36 +126,31 @@ class AudioManager(QObject):
             threading.Thread(target=_play_wav_task, daemon=True).start()
             return
         
-        # 对于 MP3，QProcess 本身就是非阻塞的
+        # 对于 MP3，使用 QMediaPlayer
         self._playing = True
-        self._current_play = QProcess()
-        self._current_play.finished.connect(self._on_playback_finished)
-        self._current_play.errorOccurred.connect(self._on_playback_error)
         self.playback_started.emit(rule_id)
         
-        system = platform.system()
-        if system == "Darwin":
-            args = [str(path)]
-            if self.output_device_name:
-                args = ["-d", str(self.output_device_name)] + args
-            self._current_play.start("afplay", args)
-        elif system == "Linux":
-            args = [str(path)]
-            if self.output_device_name:
-                args = ["--device", str(self.output_device_name)] + args
-            self._current_play.start("paplay", args)
-        elif system == "Windows":
-            ps_cmd = (
-                f"$p = New-Object System.Windows.Media.MediaPlayer; "
-                f"$p.Open([Uri]'{path.absolute().as_uri()}'); "
-                f"$p.Play(); "
-                f"while($p.NaturalDuration.HasTimeSpan -eq $false) {{ Start-Sleep -m 50 }}; "
-                f"Start-Sleep -s [math]::Ceiling($p.NaturalDuration.TimeSpan.TotalSeconds)"
-            )
-            self._current_play.start("powershell", [
-                "-c",
-                f"Add-Type -AssemblyName PresentationCore; {ps_cmd}"
-            ])
+        # --- 同步设备选择 ---
+        if self.output_device_name:
+            try:
+                from PySide6.QtMultimedia import QMediaDevices
+                for device in QMediaDevices.audioOutputs():
+                    if device.description() == self.output_device_name:
+                        self._audio_output.setDevice(device)
+                        break
+            except Exception as e:
+                print(f"[DEBUG] AudioManager: 设置 Qt 音频输出设备失败: {e}")
+        # --------------------
+
+        self._player.setSource(QUrl.fromLocalFile(str(path)))
+        self._player.play()
+
+    def stop_current(self):
+        """停止当前播放"""
+        if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self._player.stop()
+        sd.stop()
+        self._playing = False
 
     def _on_rule_done(self, rule_id: str) -> None:
         self.rule_audio_ready.emit(rule_id)
@@ -157,17 +164,13 @@ class AudioManager(QObject):
             self._current_gen = None
         self.generation_complete.emit()
 
-    def _on_playback_finished(self, exit_code, exit_status) -> None:
-        print(f"[DEBUG] AudioManager: 播放进程结束, exit_code={exit_code}, status={exit_status}")
-        self._playing = False
-        if self._current_play is not None:
-            self._current_play.deleteLater()
-            self._current_play = None
-        self.playback_finished.emit("")
+    def _on_media_status_changed(self, status):
+        print(f"[DEBUG] AudioManager: 媒体状态改变: {status}")
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            self._playing = False
+            self.playback_finished.emit("")
 
-    def _on_playback_error(self, error) -> None:
-        print(f"[DEBUG] AudioManager: 播放进程发生错误: {error}")
+    def _on_player_error(self, error, error_string):
+        print(f"[DEBUG] AudioManager: QMediaPlayer 错误: {error_string}")
         self._playing = False
-        if self._current_play is not None:
-            self._current_play.deleteLater()
-            self._current_play = None
+        self.playback_finished.emit("")

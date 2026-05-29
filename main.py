@@ -9,6 +9,7 @@ Live Agent —— 基于 Sherpa-ONNX 的流式语音识别入口。
 
 import signal
 import sys
+import traceback
 from dataclasses import dataclass
 
 from live_agent import LiveASR, KeywordMatcher, EdgeTTS
@@ -69,44 +70,48 @@ RULES: dict[str, Rule] = {
 
 def main():
     """主函数：串接 ASR → 关键词匹配 → TTS 播报。"""
+    try:
+        # 提取 reply 文案给 KeywordMatcher 做匹配
+        keyword_replies = {
+            keyword: rule.reply for keyword, rule in RULES.items()
+        }
 
-    # 提取 reply 文案给 KeywordMatcher 做匹配
-    keyword_replies = {
-        keyword: rule.reply for keyword, rule in RULES.items()
-    }
+        asr = LiveASR(model_dir="models")
+        matcher = KeywordMatcher(keyword_replies)
 
-    asr = LiveASR(model_dir="models")
-    matcher = KeywordMatcher(keyword_replies)
+        # 只需一个 EdgeTTS 实例，speak() 方法支持按需切换音色
+        tts = EdgeTTS()
 
-    # 只需一个 EdgeTTS 实例，speak() 方法支持按需切换音色
-    tts = EdgeTTS()
+        def on_text(text: str):
+            """ASR 识别结果回调。"""
+            print(f"\r{text}", end="", flush=True)
 
-    def on_text(text: str):
-        """ASR 识别结果回调。"""
-        print(f"\r{text}", end="", flush=True)
+            hit = matcher.check(text)
+            if hit:
+                rule = RULES[hit.keyword]
+                voice_name = rule.voice.split("-")[-1].replace("Neural", "")
+                print(f"\n[命中] {hit.keyword} → [{voice_name}] {rule.reply}")
+                tts.speak(text=rule.reply, voice=rule.voice, rate=rule.rate)
 
-        hit = matcher.check(text)
-        if hit:
-            rule = RULES[hit.keyword]
+        def on_interrupt(signum, frame):
+            print("\n正在停止...")
+            asr.stop()
+            sys.exit(0)
+
+        signal.signal(signal.SIGINT, on_interrupt)
+
+        print("Live ASR 已启动，请对着麦克风说话。按 Ctrl+C 停止。")
+        print(f"当前关键词 ({len(RULES)} 条):")
+        for kw, rule in RULES.items():
             voice_name = rule.voice.split("-")[-1].replace("Neural", "")
-            print(f"\n[命中] {hit.keyword} → [{voice_name}] {rule.reply}")
-            tts.speak(text=rule.reply, voice=rule.voice, rate=rule.rate)
-
-    def on_interrupt(signum, frame):
-        print("\n正在停止...")
-        asr.stop()
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, on_interrupt)
-
-    print("Live ASR 已启动，请对着麦克风说话。按 Ctrl+C 停止。")
-    print(f"当前关键词 ({len(RULES)} 条):")
-    for kw, rule in RULES.items():
-        voice_name = rule.voice.split("-")[-1].replace("Neural", "")
-        print(f"  \"{kw}\" → [{voice_name}] {rule.reply}")
-    print()
-    asr.start(callback=on_text)
-    signal.pause()
+            print(f"  \"{kw}\" → [{voice_name}] {rule.reply}")
+        print()
+        asr.start(callback=on_text)
+        signal.pause()
+    except Exception:
+        print("\n[!] 程序运行出错:")
+        traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == "__main__":

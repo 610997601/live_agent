@@ -25,7 +25,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("直播助手 - 统一客户端")
+        self.setWindowTitle("直播助手-内测版")
         self.setWindowIcon(QIcon("icon.png"))
         self.setMinimumSize(1000, 750)
         self.resize(1100, 800)

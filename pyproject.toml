@@ -5,11 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11, <3.13"
 dependencies = [
-    "sherpa-onnx",
     "sounddevice",
     "edge-tts",
     "pyside6>=6.5",
-    "sherpa-onnx-core>=1.13.2",
     "fastapi>=0.136.1",
     "openpyxl>=3.1.5",
     "pandas>=3.0.3",
@@ -20,6 +18,8 @@ dependencies = [
     "uvicorn>=0.47.0",
     "pyinstaller>=6.11.1",
     "pyinstaller-hooks-contrib>=2025.1",
+    "faster-whisper>=1.2.1",
+    "cos-python-sdk-v5>=1.9.44",
 ]
 
 [tool.setuptools]

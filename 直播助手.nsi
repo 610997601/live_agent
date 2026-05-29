@@ -1,7 +1,8 @@
 ﻿; 直播助手.nsi
 ; 直播助手 Windows 安装包脚本
 
-!define APP_NAME "直播助手"
+!define APP_NAME "直播助手-内测版"
+!define APP_NAME_EN "LiveAssistant"
 !define COMP_NAME "hsuanyuen"
 !define WEB_SITE "https://github.com/hsuanyuen/live_agent"
 !define VERSION "1.0.0"
@@ -10,13 +11,15 @@
 ; --- 基础设置 ---
 Name "${APP_NAME}"
 OutFile "直播助手_安装包_v${VERSION}.exe"
-InstallDir "$PROGRAMFILES64\${APP_NAME}"
-InstallDirRegKey HKLM "Software\${APP_NAME}" "Install_Dir"
+InstallDir "$PROGRAMFILES64\${APP_NAME_EN}"
+InstallDirRegKey HKLM "Software\${APP_NAME_EN}" "Install_Dir"
 RequestExecutionLevel admin
 
 ; --- 引入界面宏 ---
 !include "MUI2.nsh"
 !define MUI_ABORTWARNING
+!define MUI_ICON "icon.ico"
+!define MUI_UNICON "icon.ico"
 
 ; --- 界面定制 ---
 !insertmacro MUI_PAGE_WELCOME
@@ -32,9 +35,9 @@ RequestExecutionLevel admin
 ; --- 安装程序段 ---
 Section "MainSection" SEC01
     SetOutPath "$INSTDIR"
-    File /r "dist\直播助手\*.*"
+    File /r "dist\LiveAssistant\*.*"
     
-    WriteRegStr HKLM "Software\${APP_NAME}" "Install_Dir" "$INSTDIR"
+    WriteRegStr HKLM "Software\${APP_NAME_EN}" "Install_Dir" "$INSTDIR"
     WriteUninstaller "$INSTDIR\Uninstall.exe"
     
     ; 创建快捷方式
@@ -49,5 +52,5 @@ Section "Uninstall"
     Delete "$DESKTOP\${APP_NAME}.lnk"
     RMDir /r "$SMPROGRAMS\${APP_NAME}"
     RMDir /r "$INSTDIR"
-    DeleteRegKey HKLM "Software\${APP_NAME}"
+    DeleteRegKey HKLM "Software\${APP_NAME_EN}"
 SectionEnd
