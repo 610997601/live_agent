@@ -144,10 +144,13 @@ class CloneVoiceAddDialog(QDialog):
 
     def _preview(self):
         if self._temp_path and self._temp_path.exists():
-             import subprocess
-             import platform
-             if platform.system() == "Windows":
-                 subprocess.Popen(["powershell", "-c", f"Add-Type -AssemblyName PresentationCore; $p = New-Object System.Windows.Media.MediaPlayer; $p.Open([Uri]'{self._temp_path.absolute().as_uri()}'); $p.Play(); Start-Sleep -s 10"])
+             from live_agent.gui.audio_manager import AudioManager
+             from live_agent.gui.settings_dialog import get_audio_devices
+             audio_mgr = AudioManager()
+             _, out_idx, out_name = get_audio_devices()
+             audio_mgr.output_device_index = out_idx
+             audio_mgr.output_device_name = out_name
+             audio_mgr.play_path(self._temp_path, "recording_preview")
 
     def _on_confirm(self):
         name = self.name_edit.text().strip()
@@ -309,16 +312,21 @@ class CloneVoiceManagerDialog(QDialog):
         import tempfile
         from pathlib import Path
         from live_agent.gui.workers import DownloadWorker
-        
+        from live_agent.gui.audio_manager import AudioManager
+        from live_agent.gui.settings_dialog import get_audio_devices
+
         # 下载到临时文件并播放
         temp_dest = Path(tempfile.gettempdir()) / f"preview_{uuid.uuid4().hex[:8]}.wav"
         self._dw = DownloadWorker(url, temp_dest)
+        self._audio_mgr = AudioManager()
+
         def _play(path, success, err):
             if success:
-                import subprocess
-                import platform
-                if platform.system() == "Windows":
-                    subprocess.Popen(["powershell", "-c", f"Add-Type -AssemblyName PresentationCore; $p = New-Object System.Windows.Media.MediaPlayer; $p.Open([Uri]'{Path(path).absolute().as_uri()}'); $p.Play(); Start-Sleep -s 15"])
+                _, out_idx, out_name = get_audio_devices()
+                self._audio_mgr.output_device_index = out_idx
+                self._audio_mgr.output_device_name = out_name
+                self._audio_mgr.play_path(path, "clone_preview")
+                
         self._dw.finished.connect(_play)
         self._dw.start()
 

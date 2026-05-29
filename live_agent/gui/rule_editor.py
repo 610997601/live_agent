@@ -368,11 +368,11 @@ class RuleEditor(QDialog):
 
     def _preview_audio(self):
         if self._current_audio_path:
-             import subprocess
-             import platform
-             p = Path(self._current_audio_path)
-             if platform.system() == "Windows":
-                 subprocess.Popen(["powershell", "-c", f"Add-Type -AssemblyName PresentationCore; $p = New-Object System.Windows.Media.MediaPlayer; $p.Open([Uri]'{p.absolute().as_uri()}'); $p.Play(); Start-Sleep -s 10"])
+             from live_agent.gui.settings_dialog import get_audio_devices
+             _, out_idx, out_name = get_audio_devices()
+             self._audio_mgr.output_device_index = out_idx
+             self._audio_mgr.output_device_name = out_name
+             self._audio_mgr.play_path(self._current_audio_path, "preview")
 
     # --- 保存最终规则 ---
     def _on_save_clicked(self):

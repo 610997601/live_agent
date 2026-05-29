@@ -88,15 +88,19 @@ class AudioManager(QObject):
         self._current_gen.start()
 
     def play(self, rule_id: str) -> None:
-        """播放预生成的音频文件。"""
+        """根据规则 ID 播放音频文件。"""
         path = self.audio_path(rule_id)
+        self.play_path(path, rule_id)
+
+    def play_path(self, path: str | Path, tag: str = "") -> None:
+        """通用播放方法，支持直接传入路径。"""
+        path = Path(path)
         is_wav = path.suffix == ".wav"
         
-        print(f"[DEBUG] AudioManager: 准备播放, rule_id={rule_id}, path={path}, device_index={self.output_device_index}")
+        print(f"[DEBUG] AudioManager: 准备播放路径, tag={tag}, path={path}, device_index={self.output_device_index}")
         
         if not path.exists():
-            print(f"[DEBUG] AudioManager: 文件不存在!")
-            self.audio_missing.emit(rule_id)
+            print(f"[DEBUG] AudioManager: 文件不存在: {path}")
             return
         
         if self._playing:
@@ -108,7 +112,7 @@ class AudioManager(QObject):
             def _play_wav_task():
                 try:
                     self._playing = True
-                    self.playback_started.emit(rule_id)
+                    self.playback_started.emit(tag)
                     with wave.open(str(path), 'rb') as wf:
                         data = wf.readframes(wf.getnframes())
                         samples = np.frombuffer(data, dtype=np.int16)
@@ -128,7 +132,7 @@ class AudioManager(QObject):
         
         # 对于 MP3，使用 QMediaPlayer
         self._playing = True
-        self.playback_started.emit(rule_id)
+        self.playback_started.emit(tag)
         
         # --- 同步设备选择 ---
         if self.output_device_name:
@@ -142,7 +146,7 @@ class AudioManager(QObject):
                 print(f"[DEBUG] AudioManager: 设置 Qt 音频输出设备失败: {e}")
         # --------------------
 
-        self._player.setSource(QUrl.fromLocalFile(str(path)))
+        self._player.setSource(QUrl.fromLocalFile(str(path.absolute())))
         self._player.play()
 
     def stop_current(self):

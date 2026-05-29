@@ -140,14 +140,16 @@ class LiveASR:
                             now = time.time()
                             if len(audio_buffer) > MIN_BUFFER_LEN:
                                 if (now - last_voice_time > 0.6) or (len(audio_buffer) > MAX_BUFFER_LEN):
+                                    # 执行识别
                                     segments, info = self._model.transcribe(
                                         audio_buffer, 
                                         beam_size=5,
                                         language="zh",
+                                        initial_prompt="这是一段简体中文的直播对话内容。", # 引导模型输出简体
                                         vad_filter=True,
                                         vad_parameters=dict(min_silence_duration_ms=500)
                                     )
-                                    
+
                                     full_text = "".join([s.text for s in segments])
                                     if full_text.strip():
                                         logger.info(f"[Whisper Result] {full_text}")

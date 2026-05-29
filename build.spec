@@ -13,6 +13,10 @@ datas = [
     ('icon.png', '.')                       # 图标
 ]
 
+# 如果本地存在 .env 文件，将其打包进 EXE 内部 (Plan B: 固化配置)
+if os.path.exists('.env'):
+    datas.append(('.env', '.'))
+
 binaries = []
 hiddenimports = [
     'PySide6', 'PySide6.QtMultimedia', 'sounddevice', 'edge_tts', 
